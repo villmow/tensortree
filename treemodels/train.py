@@ -33,7 +33,7 @@ def train(cfg: TrainConfig) -> None:
     )
 
     # init model
-    if data_dir.exists() or cfg.dataset.force_reload:
+    if not data_dir.exists() or cfg.dataset.force_reload:
         data_module: pl.LightningDataModule = hydra.utils.instantiate(cfg.dataset, force_reload=cfg.dataset.force_reload)
         data_module.prepare_data()
 
