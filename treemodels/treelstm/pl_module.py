@@ -5,6 +5,7 @@ import torch
 
 import torchtree
 from torchtree.data.vocabulary import Vocabulary
+from treemodels.config import TrainConfig
 
 
 class TreeLSTMClassification(pl.LightningModule):
@@ -17,6 +18,7 @@ class TreeLSTMClassification(pl.LightningModule):
         dropout = 0.1,
         num_classes=5,
         vocabulary: Vocabulary = None,
+        cfg: Optional[TrainConfig] = None,
         **kwargs
     ):
         super().__init__()
