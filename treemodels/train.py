@@ -44,9 +44,10 @@ def train(cfg: TrainConfig) -> None:
 
     print(model)
     trainer = pl.Trainer(
-        min_epochs=1,
-        max_epochs=50,
-        logger=wandb_logger
+        min_epochs=cfg.min_epochs,
+        max_epochs=cfg.max_epochs,
+        logger=wandb_logger,
+        gpus=cfg.gpus,
     )
 
     trainer.fit(model, datamodule=data_module)

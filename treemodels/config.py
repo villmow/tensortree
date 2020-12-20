@@ -34,6 +34,7 @@ class TrainConfig:
     dataset: DatasetConfig = SSTConfig()
     model: TreeLSTMConfig = TreeLSTMConfig()
 
+    gpus: int = 0
     min_epochs: int = 1
     max_epochs: Optional[int] = None
 

@@ -10,8 +10,11 @@ setup(name='torchtree',
       packages=find_namespace_packages(),
       install_requires=[
             "torch",
-            "pytorch_lightning"
-            "hydra"
+            "pytorch_lightning",
+            "hydra",
+            "nltk",
+            "datasets",
+            "wandb",
       ],
       entry_points={
         'console_scripts': [
