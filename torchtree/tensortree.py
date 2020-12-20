@@ -1,0 +1,540 @@
+import collections
+from dataclasses import dataclass
+from typing import *
+
+import numpy as np
+import torch
+
+import torchtree
+
+
+# Render the tree in certain styles
+Style = collections.namedtuple("Style", ("vertical", "cont", "end"))
+AsciiStyle = Style(vertical='|   ', cont='|-- ', end='+-- ')
+ContStyle = Style(vertical='\u2502   ', cont='\u251c\u2500\u2500 ', end='\u2514\u2500\u2500 ')
+ContRoundStyle = Style(vertical='\u2502   ', cont='\u251c\u2500\u2500 ', end='\u2570\u2500\u2500 ')
+DoubleStyle = Style(vertical='\u2551   ', cont='\u2560\u2550\u2550 ', end='\u255a\u2550\u2550 ')
+Row = collections.namedtuple("Row", ("pre", "fill", "node"))
+
+
+def to_torch(some_sequence: Sequence[Any]) -> torch.Tensor:
+    if isinstance(some_sequence, torch.Tensor):
+        return some_sequence
+    elif isinstance(some_sequence, np.ndarray):
+        return torch.from_numpy(some_sequence)
+    else:
+        return torch.tensor(some_sequence)  # may raise additional errors
+
+
+# Define a type alias for the content of the node sequence
+LabelType = Any
+
+
+@dataclass(frozen=True)
+class TreeStorage:
+    # either parents or descendants may be None.
+    # other sequence types will be converted to tensors.
+    parents: Union[torch.Tensor, Sequence[int]] = None
+    descendants: Union[torch.Tensor, Sequence[int]] = None
+
+    # some operations (swapping) only work when labels is a torch.Tensor
+    labels: Union[torch.Tensor, Sequence[LabelType]] = None
+
+    def __post_init__(self):
+        if self.parents is None and self.descendants is None:
+            raise ValueError("Either parents or descendants must be passed")
+
+        if self.parents is None:  # compute parents from descendants
+            descendants: torch.Tensor = to_torch(self.descendants).long()
+            parents = torchtree.parents_from_descendants(self.descendants)
+
+        elif self.descendants is None:  # compute descendants from parents
+            parents: torch.Tensor = to_torch(self.parents).long()
+            descendants = torchtree.descendants_from_parents(parents)
+
+        else:  # convert everything to a tensor
+            parents: torch.Tensor = to_torch(self.parents).long()
+            descendants: torch.Tensor = to_torch(self.descendants).long()
+
+        # labels may be nothing, in that case simply enumerate the nodes
+        if self.labels is None:
+            labels = torch.arange(len(descendants)).to(descendants)
+        else:
+            # labels is a sequence of strings (tensor incompatible)
+            try:
+                labels: torch.Tensor = to_torch(self.labels).long()
+            except (ValueError, TypeError, RuntimeError):
+                labels: List[LabelType] = list(self.labels)
+
+        if descendants.numel() != len(labels) != parents.numel():
+            raise ValueError("All arrays need to be of same length.")
+
+        object.__setattr__(self, 'parents', parents)
+        object.__setattr__(self, 'descendants', descendants)
+        object.__setattr__(self, 'labels', labels)
+
+
+def new_tree(
+    parents: Optional[Sequence[int]] = None, descendants: Optional[Sequence[int]] = None,
+    labels: Optional[Sequence[LabelType]] = None
+):
+    return TensorTree(TreeStorage(parents, descendants, labels))
+
+
+class TensorTree:
+
+    def __init__(self, data: TreeStorage, root_idx: int = 0):
+        """
+        A tree can be either defined by a parents or a descendants tensor. Additional nodes list can
+        be passed if it contains a string, it will be used for rendering.
+
+        If either parents or descendants array is not passed, it will be computed from the other (O(n) expensive).
+        """
+        self.data = data
+        self.root_idx = root_idx
+
+        if self.data.parents[0] != -1:
+            raise ValueError("Parents array seems to have wrong format.")
+
+        self.__len = self.data.descendants.size(-1)
+        # cache this
+
+        # span in original array
+        self.end = len(self)
+        if self.is_subtree():
+            self.__len = self.data.descendants[root_idx] + 1
+            self.end = root_idx + len(self)
+
+        # self._indices = torch.arange(len(self)).to(self.data.descendants.device)
+
+    def is_subtree(self) -> bool:
+        return self.root_idx > 0
+
+    def __len__(self):
+        """ The number of nodes in this tree. """
+        return self.__len
+
+    def __getitem__(self, node_idx: Union[int, torch.Tensor, np.ndarray, Tuple[int, ...], None]):
+        """ Will return a TreeView of the node at node_idx"""
+        self._check_bounds(node_idx)
+
+        if node_idx is None:
+            node_idx = self.root_idx  # use root
+
+        return TensorTree(self.data, node_idx)
+
+    def __str__(self):
+        return self.pformat(max_nodes=4)
+
+    # helpers
+    def label(self, node_idx: Union[int, torch.Tensor]) -> Any:
+        """ Returns the label of a node. """
+        self._check_bounds(node_idx)
+        return self.data.labels[node_idx]
+
+    def num_descendants(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
+        """ Returns the amount of descendants of a node. """
+        self._check_bounds(node_idx)
+        return self.data.descendants[node_idx]
+
+    def parent(self, node_idx: Union[int, torch.Tensor]) -> Optional[int]:
+        """ Returns the parent idx for this node or None if node_idx is root.
+
+        :param node_idx:
+        :return:
+        """
+        self._check_bounds(node_idx)
+
+        # return None for root
+        if node_idx == self.root_idx:
+            return
+
+        return self.data.parents[node_idx]
+
+    @property
+    def descendants_for_subtree(self) -> torch.Tensor:
+        """ Returns the relevant subset of descendants for this subtree."""
+        return self.data.descendants[self.root_idx:self.end]
+
+    @property
+    def labels_for_subtree(self) -> Sequence[LabelType]:
+        """ Returns the relevant subset of labels for this subtree."""
+        return self.data.labels[self.root_idx:self.end]
+
+    @property
+    def parents_for_subtree(self) -> torch.Tensor:
+        """ Returns the relevant subset of labels for this subtree."""
+        parents = self.data.parents[self.root_idx:self.end] - self.root_idx
+        parents[0] = -1
+        return parents
+
+    def detach(self):
+        """ Returns a new tree rooted at self.root_idx """
+        from copy import deepcopy
+        return new_tree(
+            parents=self.parents_for_subtree.clone(),
+            descendants=self.descendants_for_subtree.clone(),
+            labels=deepcopy(self.labels_for_subtree)
+        )
+
+    def next_node_not_in_branch(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
+        """
+        Return the next node, that is not part of the branch of node at node_idx.
+
+        Can be a sibling or any other node that follows after this branch.
+
+        :param node_idx: Can be either an integer or a single value tensor
+        :return:
+        """
+        next_node_idx = (node_idx + self.num_descendants(node_idx) + 1)
+        return next_node_idx if next_node_idx < len(self) else None
+
+    def step_out(self, node_idx: Union[int, torch.Tensor]) -> Optional[torch.Tensor]:
+        """
+        Return the next node, that is not part of the subtree of node_idx's parent.
+
+        Can be a sibling to nodes parent or any other node that follows.
+
+        :param node_idx: Can be either an integer or a single value tensor
+        :return:
+        """
+        nodes_parent = self.parent(node_idx)
+        if nodes_parent is None:
+            return
+
+        return self.next_node_not_in_branch(nodes_parent)
+
+    def node_idx_for_tree_position(self, tree_position: Tuple[int, ...]) -> Union[int, torch.Tensor]:
+        if not isinstance(tree_position, tuple):
+            raise ValueError("tree_position must be tuple")
+
+        def get_nth_child(node_idx, n):
+            for i, child_idx in enumerate(self.iter_children(node_idx)):
+                if i == n:
+                    return child_idx
+            raise IndexError
+
+        current_node_idx = self.root_idx  # root
+        for child_number in tree_position:
+            current_node_idx = get_nth_child(current_node_idx, child_number)
+
+        return current_node_idx
+
+    def node_incidence_matrix(self):
+        return torchtree.node_incidence_matrix(self.data.descendants)
+
+    # leaves
+    def is_leaf(self, node_idx: Union[int, torch.Tensor]) -> bool:
+        return self.num_descendants(node_idx) == 0
+
+    def leaves_mask(self) -> torch.BoolTensor:
+        """ Returns a boolean mask for all leaf nodes in this tree """
+        return self.data.descendants == 0
+
+    def leaves(self) -> torch.Tensor:
+        return self.leaves_mask().nonzero().squeeze(-1)
+
+    # children
+    def iter_children(self, node_idx: Union[int, torch.Tensor]) -> Generator[torch.Tensor, None, None]:
+        """
+        Iters over the children of a node with a specific index in a tree.
+
+        :param node_idx: Node to iterate over the children
+        """
+        self._check_bounds(node_idx)
+
+        branch_end = self.next_node_not_in_branch(node_idx)  # end of subtree of node_idx
+
+        if branch_end is None:
+            branch_end = len(self)
+
+        # next child is at the next position in the descendants array
+        next_child = node_idx + 1
+
+        # are we still in the subtree
+        while next_child is not None and next_child < branch_end:
+            yield next_child
+            next_child = self.next_node_not_in_branch(next_child)
+
+    def children_mask(self, node_idx: Union[int, torch.Tensor]) -> torch.BoolTensor:
+        """
+        Returns children indices of a node at a specific index in a tree.
+
+        :param node_idx: Node to get the children
+        """
+        self._check_bounds(node_idx)
+
+        return self.data.parents == node_idx
+
+    def children(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
+        """
+        Returns children indices of a node at a specific index in a tree.
+
+        :param node_idx: Node to get the children
+        """
+        return self.children_mask(node_idx).nonzero().squeeze(-1)
+
+    # siblings
+    def iter_siblings(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> Generator[torch.Tensor, None, None]:
+        """ Node indices with the same parent. The node at node_idx is excluded.
+
+        set left to False to only output siblings which are to the right of node at node_idx.
+        set right to False  to only output siblings which are to the left of node at node_idx.
+        """
+        if not (left or right):
+            raise ValueError("Left or right must be specified.")
+        self._check_bounds(node_idx)
+
+        parent_idx = self.parent(node_idx)
+
+        # root
+        if parent_idx is None:
+            return
+
+        reached_node = False
+        for node in self.iter_children(parent_idx):
+            if node == node_idx:
+                reached_node = True
+                continue
+
+            if left and not reached_node:
+                yield node
+
+            if right and reached_node:
+                yield node
+
+    def right_sibling(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
+        next_node = self.next_node_not_in_branch(node_idx)
+        if next_node is not None:
+            if self.parent(next_node) == self.parent(node_idx):
+                return next_node
+
+    def siblings_mask(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> torch.BoolTensor:
+        """ Node indices with the same parent. The node at node_idx is excluded.
+
+        set left to False to only output siblings which are to the right of node at node_idx.
+        set right to False  to only output siblings which are to the left of node at node_idx.
+        """
+        if not (left or right):
+            raise ValueError("Left or right must be specified.")
+        self._check_bounds(node_idx)
+
+        parent_idx = self.parent(node_idx)
+
+        # root
+        if parent_idx is None:
+            return self.descendants.new_zeros(len(self)).bool()
+
+        all_siblings = self.children_mask(parent_idx)
+
+        assert all_siblings[node_idx], "this should be true"
+        # exlude node at node_idx
+        all_siblings[node_idx] = False
+
+        # exclude everything before node_idx
+        if not left:
+            all_siblings[:node_idx] = False
+
+        # exclude everything after node_idx
+        if not right:
+            all_siblings[node_idx + 1:] = False
+
+        return all_siblings
+
+    def siblings(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> torch.Tensor:
+        return self.siblings_mask(node_idx, left, right).nonzero().squeeze(-1)
+
+    def has_sibling(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> bool:
+        """
+        Is there a sibling to this node?
+
+        :param node_idx:
+        :param left: look left for siblings (set to False to only check for right siblings)
+        :param right: look right for siblings (set to False to only check for left siblings)
+        :return:
+        """
+        try:
+            self._check_bounds(node_idx)
+        except IndexError:
+            pass
+
+        node_parent = self.parent(node_idx)
+        if node_parent is None:
+            return False
+
+        result = False
+        if right:
+            next_node = self.next_node_not_in_branch(node_idx)
+            if next_node is not None:
+                next_nodes_parent = self.parent(next_node)
+                has_right_sibling = (next_nodes_parent == node_parent)
+                result = result or has_right_sibling
+        if left and not result:
+            # otherwise something should be between parent and node
+            has_left_sibling = (node_parent + 1) != node_idx
+            result = result or has_left_sibling
+
+        return result
+
+    # ancestors
+    def iter_ancestors(self, node_idx: Union[int, torch.Tensor]) -> Generator[torch.Tensor, None, None]:
+        node_parent = self.parent(node_idx)
+        while node_parent is not None:
+            yield node_parent
+            node_parent = self.parent(node_parent)
+
+    # pretty printing
+    def pformat(
+            self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = str,
+            style: Union[Style] = ContRoundStyle,
+    ) -> str:
+        """
+        Pretty prints a tree up to `max_nodes`. Define a node_renderer for custom node types (e.g. Dictionaries).
+        :param max_nodes: Render up to this amount of nodes.
+        :param node_renderer: A function that outputs a string.
+        :param style: Style the tree.
+        :return:
+        """
+        def format_nodes() -> Generator[Row, None, None]:
+            incidences = torchtree.node_incidence_matrix(self.descendants_for_subtree)
+            levels = torchtree.levels(incidences).tolist()
+            active_levels = set()
+
+            def make_row(token, node_idx, level, active_levels, fill, replace_token: bool = False):
+                pre = "".join(style.vertical if l in active_levels else "    " for l in range(level - 1))
+
+                if level == 0:
+                    fill = ""
+
+                if isinstance(token, torch.Tensor):
+                    token = token.item()
+
+                if replace_token:
+                    token = "[...]"
+                else:
+                    token = node_renderer(token)
+
+                return Row(pre, fill, f"{node_idx}. {token}")
+
+            for node_idx, (token, lev) in enumerate(zip(self.labels_for_subtree, levels), start=self.root_idx):
+                fill = style.end
+
+                if self.has_sibling(node_idx, left=False, right=True):
+                    fill = style.cont
+                    if not self.is_leaf(node_idx):
+                        active_levels.add((lev - 1))
+                elif (lev - 1) in active_levels:
+                    active_levels.remove(lev - 1)
+
+                row = make_row(token, node_idx, lev, active_levels, fill)
+
+                yield row
+
+                # code for stopping at max_nodes and finish open levels below
+                # maybe we break before printing this row, to print a shorter version of this tree
+                if max_nodes is not None and node_idx >= (max_nodes - len(active_levels) - 2):
+
+                    # this was the last node of this branch
+                    if fill == style.end:
+                        next_node = self.next_node_not_in_branch(node_idx)
+                    elif fill == style.cont:
+                        next_node = self.right_sibling(node_idx)
+                    active_levels.add(None)
+
+                    while active_levels and next_node:
+                        yield make_row(None, next_node, levels[next_node], active_levels, style.end, replace_token=True)
+                        next_node = self.step_out(next_node)
+                        some_lev = active_levels.pop()
+
+                    break
+
+        return "\n".join("".join(row) for row in format_nodes())
+
+    def pprint(
+            self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = str,
+            style: Union[Style] = ContRoundStyle,
+    ):
+        """ See pformat for description of arguments."""
+        print("TensorTree():\n", self.pformat(max_nodes, node_renderer, style))
+
+    def _check_bounds(self, node_idx: Union[int, torch.Tensor]) -> None:
+        """ Checks whether node_idx is in the bounds of this tree and raises exception if not """
+        if node_idx < self.root_idx or node_idx >= self.end:
+            raise IndexError(
+                f"Index {node_idx} is out of bounds for this"
+                f" {'sub' if self.is_subtree() else ''}tree starting at index"
+                f" {self.root_idx} with {len(self)} nodes."
+            )
+
+    # functions below return modify and return a new tree
+    def delete_node(self, node_idx: int, replacement_token: Optional[Any] = None):
+        """
+            Returns a new tree with branch at node_idx deleted or replaced with a single node without children.
+
+            Does the following, given this tree and node_idx=2, replacement_token=99:
+
+            0 MethodDeclaration
+            ├── 1 parameters
+            │   ├── 2 FormalParameter
+            │   │   ├── 3 type
+            │   │   │   └── 4 ReferenceType
+            │   │   │       └── 5 name
+            │   │   │           └── 6 Bitmap
+            │   │   └── 7 name
+            │   │       └── 8 bmp
+            │   └── 9 FormalParameter
+            │       ├── 10 type
+            │       │   └── 11 ReferenceType
+            │       │       └── 12 name
+            │       │           └── 13 File
+            │       └── 14 name
+            └── 15 body
+
+            Will return tensors for the following tree:
+
+            0 MethodDeclaration (0)
+            ├── 1 parameters (1)
+            │   ├── 2 <MASK> (2)
+            │   └── 9 FormalParameter (3)
+            │       ├── 10 type (4)
+            │       │   └── 11 ReferenceType (5)
+            │       │       └── 12 name (6)
+            │       │           └── 13 File (7)
+            │       └── 14 name (8)
+            └── 15 body (9)
+
+            For node_idx=2, replacement_token=None:
+
+            0 MethodDeclaration (0)
+            ├── 1 parameters (1)
+            │   └── 9 FormalParameter (3)
+            │       ├── 10 type (4)
+            │       │   └── 11 ReferenceType (5)
+            │       │       └── 12 name (6)
+            │       │           └── 13 File (7)
+            │       └── 14 name (8)
+            └── 15 body (9)
+
+
+            The original tensors have been:
+            nodes:        [  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15]
+            parents:       [ -1,  0,  1,  2,  3,  4,  5,  2,  7,  1,  9, 10, 11, 12,  9,  0]
+            #descendants:  [ 14, 13,  6,  3,  2,  1,  0,  1,  0,  5,  3,  2,  1,  0,  0,  0]
+            #children:     [  2,  2,  2,  1,  1,  1,  0,  1,  0,  2,  1,  1,  1,  0,  0,  0]
+
+            This method will return the following tensors:
+            nodes:        [  0,  1, 99,  9, 10, 11, 12, 13, 14, 15]
+            parents:      [ -1,  0,  1,  1,  3,  4,  5,  6,  3,  0]
+            #descendants: [  9,  7,  0,  5,  3,  2,  1,  0,  0,  0]
+            #children:    [  2,  2,  0,  2,  1,  1,  1,  0,  0,  0]
+            """
+        return torchtree.delete_subtree(self, node_idx, replacement_token)
+
+    def delete_children(self, node_idx: int, replacement_token: Optional[Any] = None):
+
+        return torchtree.delete_subtree(self, node_idx, replacement_token)
+
+    def swap(self, node_idx: int, other_node_idx: int):
+        return torchtree.swap(self, node_idx, other_node_idx)
+
+

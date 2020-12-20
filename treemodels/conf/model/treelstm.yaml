@@ -1,0 +1,7 @@
+# @package _group_
+_target_: "treemodels.treelstm.TreeLSTMClassification"
+learning_rate: 0.001
+weight_decay: 1e-4
+embedding_dim: 150
+tree_lstm_hidden_size: 150
+dropout: 0.1
