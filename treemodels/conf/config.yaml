@@ -1,2 +1,6 @@
 defaults:
   - model: treelstm
+  - model.optimizer: adam
+  - dataset: sst
+  - logger: wandb
+  - pl_trainer: default

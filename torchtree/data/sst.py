@@ -264,3 +264,10 @@ class SSTDatamodule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.dataset['test'], batch_size=self.eval_batch_size, collate_fn=self.collater)
+
+    @property
+    def class_label(self) -> datasets.ClassLabel:
+        if not hasattr(self, "dataset"):
+            self.setup()
+
+        return self.dataset["train"].features['labels'].feature

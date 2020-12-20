@@ -141,7 +141,7 @@ class TreeLSTMClassification(pl.LightningModule):
         self.test_acc(y_hat, y)
         self.log('test_acc', self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-        self.test_root_acc(logits[:,0,:], targets[:,0])
+        self.test_root_acc(logits[:, 0, :], targets[:, 0])
         self.log('test_root_acc', self.test_root_acc, on_step=False, on_epoch=True, prog_bar=True)
 
         return loss
