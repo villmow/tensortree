@@ -36,7 +36,7 @@ class TrainConfig:
 
     gpus: int = 0
     min_epochs: int = 1
-    max_epochs: Optional[int] = None
+    max_epochs: int = 100
 
     wandb_offline: bool = True
     seed: int = 1234
