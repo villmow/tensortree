@@ -10,7 +10,8 @@ setup(name='torchtree',
       packages=find_namespace_packages(),
       install_requires=[
             "torch",
-            "pytest"
+            "pytorch_lightning"
+            "hydra"
       ],
       entry_points={
         'console_scripts': [
