@@ -9,12 +9,17 @@ from treemodels.config import TrainConfig
 import hydra
 from omegaconf import OmegaConf
 
+import wandb
 
 
 @hydra.main(config_path="conf", config_name="config")
 def train(cfg: TrainConfig) -> None:
     print("Running with the following config:")
     print(OmegaConf.to_yaml(cfg))
+
+    # for hparam sweep
+    wandb.init(config=cfg)
+    cfg = wandb.config
 
     pl.seed_everything(cfg.seed)
 
@@ -79,4 +84,5 @@ def train(cfg: TrainConfig) -> None:
 
 
 if __name__ == '__main__':
+    wandb.agent(sweep_id, function=train)
     train()
