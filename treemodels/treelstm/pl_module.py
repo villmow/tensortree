@@ -1,24 +1,26 @@
 from typing import *
 
+import hydra
 import pytorch_lightning as pl
 import torch
 
 import torchtree
 from torchtree.data.vocabulary import Vocabulary
-from treemodels.config import TrainConfig
+from treemodels.config import OptimizerConfig
 
 
 class TreeLSTMClassification(pl.LightningModule):
     def __init__(
         self,
-        learning_rate = 0.001,
+        cfg: OptimizerConfig,
+        lr = 0.001,
         weight_decay = 1e-4,
         embedding_dim = 150,
+        embedding_file: Optional[str] = None,
         tree_lstm_hidden_size = 150,
         dropout = 0.1,
         num_classes=5,
         vocabulary: Vocabulary = None,
-        cfg: Optional[TrainConfig] = None,
         **kwargs
     ):
         super().__init__()
@@ -26,11 +28,16 @@ class TreeLSTMClassification(pl.LightningModule):
         self.save_hyperparameters()
 
         self.vocabulary = vocabulary
+        self.optimizer_cfg = cfg
 
         self.embedding = torch.nn.Embedding(
             len(self.vocabulary), embedding_dim,
             padding_idx=self.vocabulary.pad_index
         )
+        if embedding_file is not None:
+            embed_dict = torchtree.utils.parse_embedding(embedding_file)
+            torchtree.utils.print_embed_overlap(embed_dict, self.vocabulary)
+            torchtree.utils.load_embedding(embed_dict, self.vocabulary, self.embedding)
 
         self.lstm = torchtree.models.TreeLSTM(embedding_dim, tree_lstm_hidden_size)
         self.classifier = torch.nn.Linear(tree_lstm_hidden_size, num_classes)
@@ -156,6 +163,11 @@ class TreeLSTMClassification(pl.LightningModule):
                 "weight_decay": self.hparams.weight_decay,
             },
         ]
-        optimizer = torch.optim.Adam(optimizer_grouped_parameters, lr=self.hparams.learning_rate)
+
+        optimizer = hydra.utils.instantiate(
+            self.optimizer_cfg,
+            optimizer_grouped_parameters,
+        )
+        print(optimizer)
         return optimizer
 

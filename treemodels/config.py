@@ -12,6 +12,8 @@ from torchtree.utils import get_project_root
 class DatasetConfig:
     data_dir: str = str(get_project_root() / "data")
     force_reload: bool = False
+    train_dataloader_worker: int = 4
+    eval_dataloader_worker: int = 2
 
 
 @dataclass
@@ -26,9 +28,9 @@ class SSTConfig(DatasetConfig):
 @dataclass
 class OptimizerConfig:
     _target_: str = MISSING
-    learning_rate: float = 0.001
+    lr: float = 0.001
     weight_decay: float = 1e-4
-    no_decay_params: Optional[List[str]] = None
+    # no_decay_params: Optional[List[str]] = None
 
 
 @dataclass
@@ -55,6 +57,7 @@ class TreeLSTMConfig(ModelConfig):
     embedding_dim: int = 150
     tree_lstm_hidden_size: int = 150
     dropout: float = 0.1
+    embedding_file: Optional[str] = None
 
 
 ##########################################################

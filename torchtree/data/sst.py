@@ -231,13 +231,17 @@ def prepare(directory: str):
 class SSTDatamodule(pl.LightningDataModule):
     """ The SST dataset binarized and ready to use. """
     def __init__(
-            self, data_dir, train_batch_size, eval_batch_size, force_reload
+            self, data_dir, train_batch_size, eval_batch_size, force_reload,
+            train_dataloader_worker, eval_dataloader_worker
     ):
         super().__init__()
         self.train_batch_size = train_batch_size
         self.eval_batch_size = eval_batch_size
         self.data_dir = Path(data_dir)
         self.force_reload = force_reload
+        self.train_dataloader_worker = train_dataloader_worker
+        self.eval_dataloader_worker = eval_dataloader_worker
+
 
     def prepare_data(self):
         """ Executed once """
@@ -257,13 +261,21 @@ class SSTDatamodule(pl.LightningDataModule):
             raise FileNotFoundError("Vocab not found. Please execute prepare before.")
 
     def train_dataloader(self):
-        return DataLoader(self.dataset['train'], batch_size=self.train_batch_size, collate_fn=self.collater)
+        return DataLoader(
+            self.dataset['train'], batch_size=self.train_batch_size, collate_fn=self.collater,
+            num_workers=self.train_dataloader_worker
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.dataset['validation'], batch_size=self.eval_batch_size, collate_fn=self.collater)
+        return DataLoader(
+            self.dataset['validation'], batch_size=self.eval_batch_size, collate_fn=self.collater,
+            num_workers=self.eval_dataloader_worker
+        )
 
     def test_dataloader(self):
-        return DataLoader(self.dataset['test'], batch_size=self.eval_batch_size, collate_fn=self.collater)
+        return DataLoader(self.dataset['test'], batch_size=self.eval_batch_size, collate_fn=self.collater,
+            num_workers=self.eval_dataloader_worker
+      )
 
     @property
     def class_label(self) -> datasets.ClassLabel:

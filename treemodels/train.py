@@ -40,7 +40,7 @@ def train(cfg: TrainConfig) -> None:
         cfg.model,
         num_classes=data_module.class_label.num_classes,
         vocabulary=vocab,
-        cfg=cfg
+        cfg=cfg.model.optimizer
     )
 
     # init loggers
