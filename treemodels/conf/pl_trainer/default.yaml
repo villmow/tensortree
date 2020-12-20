@@ -1,13 +1,13 @@
 # @package _group_
 #default_root_dir: None
 gradient_clip_val: 0
-gpus: 0
+gpus: 1
 auto_select_gpus: False
 log_gpu_memory: None
 overfit_batches: 0.0
 track_grad_norm: -1
 accumulate_grad_batches: 1
-max_epochs: 1000
+max_epochs: 25
 min_epochs: 1
 #max_steps: None
 #min_steps: None

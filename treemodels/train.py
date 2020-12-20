@@ -17,15 +17,10 @@ def train(cfg: TrainConfig) -> None:
     print("Running with the following config:")
     print(OmegaConf.to_yaml(cfg))
 
-    # for hparam sweep
-    wandb.init(config=cfg)
-    cfg = wandb.config
-
     pl.seed_everything(cfg.seed)
 
     # load data and vocabulary
     data_dir = Path(cfg.dataset.data_dir)
-
 
     # init data
     data_module: pl.LightningDataModule = hydra.utils.instantiate(
@@ -84,5 +79,4 @@ def train(cfg: TrainConfig) -> None:
 
 
 if __name__ == '__main__':
-    wandb.agent(sweep_id, function=train)
     train()

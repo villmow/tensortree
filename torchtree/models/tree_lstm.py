@@ -87,7 +87,7 @@ class TreeLSTM(torch.nn.Module):
                 )
 
                 child_h = h[nodes_in_previous_layer]
-                child_idx = torch.arange(child_h.size(0))
+                child_idx = torch.arange(child_h.size(0), device=child_h.device)
 
                 parent_features = F.embedding_bag(
                     child_idx,
