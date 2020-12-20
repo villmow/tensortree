@@ -39,7 +39,7 @@ class TreeLSTM(torch.nn.Module):
 
         # adjust parents, so that every sample in batch gets unique parents
         # the actual parent index is not needed.
-        scale = torch.arange(0, B).view(-1, 1) * N
+        scale = torch.arange(0, B, device=parents.device).view(-1, 1) * N
         adjusted_parents = parents + scale
 
         # # h and c states for every node in the batch
