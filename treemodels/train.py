@@ -19,6 +19,8 @@ from hydra.core.config_store import ConfigStore
 def train(cfg: TrainConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
+    pl.seed_everything(cfg.seed)
+
     # load data and vocabulary
     data_dir = Path(cfg.dataset.data_dir)
 

@@ -38,6 +38,7 @@ class TrainConfig:
     max_epochs: Optional[int] = None
 
     wandb_offline: bool = True
+    seed: int = 1234
 
 
 from hydra.core.config_store import ConfigStore
