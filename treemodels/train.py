@@ -3,13 +3,11 @@ from pathlib import Path
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 
-from torchtree.data.vocabulary import Vocabulary
+from treemodels.data.vocabulary import Vocabulary
 
 from treemodels.config import TrainConfig
 import hydra
 from omegaconf import OmegaConf
-
-import wandb
 
 
 @hydra.main(config_path="conf", config_name="config")
