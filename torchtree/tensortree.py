@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass
-from typing import *
+from typing import Sequence, Any, Union, List, Optional, Tuple, Generator, Callable, Literal
 
 import numpy as np
 import torch
@@ -28,17 +28,20 @@ def to_torch(some_sequence: Sequence[Any]) -> torch.Tensor:
 
 # Define a type alias for the content of the node sequence
 LabelType = Any
+TensorType = Union[Sequence[int], np.ndarray, torch.Tensor]
 
 
 @dataclass(frozen=True)
 class TreeStorage:
     # either parents or descendants may be None.
     # other sequence types will be converted to tensors.
-    parents: Union[torch.Tensor, Sequence[int]] = None
+    parents: TensorType = None
     descendants: Union[torch.Tensor, Sequence[int]] = None
 
-    # some operations (swapping) only work when labels is a torch.Tensor
-    labels: Union[torch.Tensor, Sequence[LabelType]] = None
+    # some operations (swapping) only work when node_data is a torch.Tensor
+    node_data: Union[torch.Tensor, Sequence[LabelType]] = None
+
+    format: Literal['torch', 'numpy'] = 'torch'
 
     def __post_init__(self):
         if self.parents is None and self.descendants is None:
@@ -56,29 +59,29 @@ class TreeStorage:
             parents: torch.Tensor = to_torch(self.parents).long()
             descendants: torch.Tensor = to_torch(self.descendants).long()
 
-        # labels may be nothing, in that case simply enumerate the nodes
-        if self.labels is None:
-            labels = torch.arange(len(descendants)).to(descendants)
+        # node_data may be nothing, in that case simply enumerate the nodes
+        if self.node_data is None:
+            node_data = torch.arange(len(descendants)).to(descendants)
         else:
-            # labels is a sequence of strings (tensor incompatible)
+            # node_data is a sequence of strings (tensor incompatible)
             try:
-                labels: torch.Tensor = to_torch(self.labels).long()
+                node_data: torch.Tensor = to_torch(self.node_data).long()
             except (ValueError, TypeError, RuntimeError):
-                labels: List[LabelType] = list(self.labels)
+                node_data: List[LabelType] = list(self.node_data)
 
-        if descendants.numel() != len(labels) != parents.numel():
+        if descendants.numel() != len(node_data) != parents.numel():
             raise ValueError("All arrays need to be of same length.")
 
         object.__setattr__(self, 'parents', parents)
         object.__setattr__(self, 'descendants', descendants)
-        object.__setattr__(self, 'labels', labels)
+        object.__setattr__(self, 'node_data', node_data)
 
 
 def new_tree(
     parents: Optional[Sequence[int]] = None, descendants: Optional[Sequence[int]] = None,
-    labels: Optional[Sequence[LabelType]] = None
+    node_data: Optional[Sequence[LabelType]] = None, format="torch"
 ):
-    return TensorTree(TreeStorage(parents, descendants, labels))
+    return TensorTree(TreeStorage(parents, descendants, node_data))
 
 
 class TensorTree:
@@ -93,10 +96,10 @@ class TensorTree:
         self.data = data
         self.root_idx = root_idx
 
-        if self.data.parents[0] != -1:
+        if len(self.data.parents) > 0 and (self.data.parents[0] != -1 or self.data.parents[0] != 0):
             raise ValueError("Parents array seems to have wrong format.")
 
-        self.__len = self.data.descendants.size(-1)
+        self.__len = self.data.descendants.shape[-1]
         # cache this
 
         # span in original array
@@ -104,8 +107,6 @@ class TensorTree:
         if self.is_subtree():
             self.__len = self.data.descendants[root_idx] + 1
             self.end = root_idx + len(self)
-
-        # self._indices = torch.arange(len(self)).to(self.data.descendants.device)
 
     def is_subtree(self) -> bool:
         return self.root_idx > 0
@@ -126,11 +127,14 @@ class TensorTree:
     def __str__(self):
         return self.pformat(max_nodes=4)
 
+    def is_descendant_of(self, node_ancestor_idx: int, node_descendant_idx: int) -> bool:
+        return node_ancestor_idx < node_descendant_idx < node_ancestor_idx + self.num_descendants(node_ancestor_idx)
+
     # helpers
-    def label(self, node_idx: Union[int, torch.Tensor]) -> Any:
+    def node_data(self, node_idx: Union[int, torch.Tensor]) -> Any:
         """ Returns the label of a node. """
         self._check_bounds(node_idx)
-        return self.data.labels[node_idx]
+        return self.data.node_data[node_idx]
 
     def num_descendants(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
         """ Returns the amount of descendants of a node. """
@@ -157,16 +161,21 @@ class TensorTree:
         return self.data.descendants[self.root_idx:self.end]
 
     @property
-    def labels_for_subtree(self) -> Sequence[LabelType]:
-        """ Returns the relevant subset of labels for this subtree."""
-        return self.data.labels[self.root_idx:self.end]
+    def node_data_for_subtree(self) -> Sequence[LabelType]:
+        """ Returns the relevant subset of node_data for this subtree."""
+        return self.data.node_data[self.root_idx:self.end]
 
     @property
     def parents_for_subtree(self) -> torch.Tensor:
-        """ Returns the relevant subset of labels for this subtree."""
+        """ Returns the relevant subset of parents for this subtree."""
         parents = self.data.parents[self.root_idx:self.end] - self.root_idx
         parents[0] = -1
         return parents
+
+    @property
+    def leaves_mask_for_subtree(self) -> torch.Tensor:
+        """ Returns the relevant subset of leaves for this subtree."""
+        return self.descendants_for_subtree == 0
 
     def detach(self):
         """ Returns a new tree rooted at self.root_idx """
@@ -174,7 +183,7 @@ class TensorTree:
         return new_tree(
             parents=self.parents_for_subtree.clone(),
             descendants=self.descendants_for_subtree.clone(),
-            labels=deepcopy(self.labels_for_subtree)
+            node_data=deepcopy(self.node_data_for_subtree)
         )
 
     def next_node_not_in_branch(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
@@ -223,6 +232,21 @@ class TensorTree:
     def node_incidence_matrix(self):
         return torchtree.node_incidence_matrix(self.data.descendants)
 
+    def depths(self):
+        """ Depth of each subtree """
+
+        from torchtree import mask_layer
+        depths = torch.zeros_like(self.data.descendants)
+
+        for i, layer_mask in enumerate(mask_layer(self.node_incidence_matrix())):
+            depths[layer_mask] = i
+
+        return depths
+
+    def leaves_in_subtrees(self):
+        """ Number of leaves in each subtree """
+        return
+
     # leaves
     def is_leaf(self, node_idx: Union[int, torch.Tensor]) -> bool:
         return self.num_descendants(node_idx) == 0
@@ -233,6 +257,7 @@ class TensorTree:
 
     def leaves(self) -> torch.Tensor:
         return self.leaves_mask().nonzero().squeeze(-1)
+
 
     # children
     def iter_children(self, node_idx: Union[int, torch.Tensor]) -> Generator[torch.Tensor, None, None]:
@@ -275,13 +300,13 @@ class TensorTree:
         return self.children_mask(node_idx).nonzero().squeeze(-1)
 
     # siblings
-    def iter_siblings(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> Generator[torch.Tensor, None, None]:
+    def iter_siblings(self, node_idx: Union[int, torch.Tensor], include_left_siblings: bool = True, include_right_siblings: bool = True) -> Generator[torch.Tensor, None, None]:
         """ Node indices with the same parent. The node at node_idx is excluded.
 
-        set left to False to only output siblings which are to the right of node at node_idx.
-        set right to False  to only output siblings which are to the left of node at node_idx.
+        set include_left_siblings to False to only output siblings which are to the right of node at node_idx.
+        set include_right_siblings to False  to only output siblings which are to the left of node at node_idx.
         """
-        if not (left or right):
+        if not (include_left_siblings or include_right_siblings):
             raise ValueError("Left or right must be specified.")
         self._check_bounds(node_idx)
 
@@ -297,10 +322,10 @@ class TensorTree:
                 reached_node = True
                 continue
 
-            if left and not reached_node:
+            if include_left_siblings and not reached_node:
                 yield node
 
-            if right and reached_node:
+            if include_right_siblings and reached_node:
                 yield node
 
     def right_sibling(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
@@ -309,13 +334,13 @@ class TensorTree:
             if self.parent(next_node) == self.parent(node_idx):
                 return next_node
 
-    def siblings_mask(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> torch.BoolTensor:
+    def siblings_mask(self, node_idx: Union[int, torch.Tensor], include_left_siblings: bool = True, include_right_siblings: bool = True) -> torch.BoolTensor:
         """ Node indices with the same parent. The node at node_idx is excluded.
 
-        set left to False to only output siblings which are to the right of node at node_idx.
+        set include_left_siblings to False to only output siblings which are to the right of node at node_idx.
         set right to False  to only output siblings which are to the left of node at node_idx.
         """
-        if not (left or right):
+        if not (include_left_siblings or include_right_siblings):
             raise ValueError("Left or right must be specified.")
         self._check_bounds(node_idx)
 
@@ -323,7 +348,7 @@ class TensorTree:
 
         # root
         if parent_idx is None:
-            return self.descendants.new_zeros(len(self)).bool()
+            return self.data.descendants.new_zeros(len(self)).bool()
 
         all_siblings = self.children_mask(parent_idx)
 
@@ -332,25 +357,25 @@ class TensorTree:
         all_siblings[node_idx] = False
 
         # exclude everything before node_idx
-        if not left:
+        if not include_left_siblings:
             all_siblings[:node_idx] = False
 
         # exclude everything after node_idx
-        if not right:
+        if not include_right_siblings:
             all_siblings[node_idx + 1:] = False
 
         return all_siblings
 
-    def siblings(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> torch.Tensor:
-        return self.siblings_mask(node_idx, left, right).nonzero().squeeze(-1)
+    def siblings(self, node_idx: Union[int, torch.Tensor], check_left: bool = True, check_right: bool = True) -> torch.Tensor:
+        return self.siblings_mask(node_idx, check_left, check_right).nonzero().squeeze(-1)
 
-    def has_sibling(self, node_idx: Union[int, torch.Tensor], left: bool = True, right: bool = True) -> bool:
+    def has_sibling(self, node_idx: Union[int, torch.Tensor], check_left: bool = True, check_right: bool = True) -> bool:
         """
         Is there a sibling to this node?
 
         :param node_idx:
-        :param left: look left for siblings (set to False to only check for right siblings)
-        :param right: look right for siblings (set to False to only check for left siblings)
+        :param check_left: look left for siblings (set to False to only check for right siblings)
+        :param check_right: look right for siblings (set to False to only check for left siblings)
         :return:
         """
         try:
@@ -363,13 +388,13 @@ class TensorTree:
             return False
 
         result = False
-        if right:
+        if check_right:
             next_node = self.next_node_not_in_branch(node_idx)
             if next_node is not None:
                 next_nodes_parent = self.parent(next_node)
                 has_right_sibling = (next_nodes_parent == node_parent)
                 result = result or has_right_sibling
-        if left and not result:
+        if check_left and not result:
             # otherwise something should be between parent and node
             has_left_sibling = (node_parent + 1) != node_idx
             result = result or has_left_sibling
@@ -416,10 +441,10 @@ class TensorTree:
 
                 return Row(pre, fill, f"{node_idx}. {token}")
 
-            for node_idx, (token, lev) in enumerate(zip(self.labels_for_subtree, levels), start=self.root_idx):
+            for node_idx, (token, lev) in enumerate(zip(self.node_data_for_subtree, levels), start=self.root_idx):
                 fill = style.end
 
-                if self.has_sibling(node_idx, left=False, right=True):
+                if self.has_sibling(node_idx, check_left=False, check_right=True):
                     fill = style.cont
                     if not self.is_leaf(node_idx):
                         active_levels.add((lev - 1))
@@ -531,10 +556,16 @@ class TensorTree:
         return torchtree.delete_subtree(self, node_idx, replacement_token)
 
     def delete_children(self, node_idx: int, replacement_token: Optional[Any] = None):
-
         return torchtree.delete_subtree(self, node_idx, replacement_token)
 
     def swap(self, node_idx: int, other_node_idx: int):
         return torchtree.swap(self, node_idx, other_node_idx)
+
+    def insert_child(self, parent_idx: int, node_data: Any, right_sibling_idx: Optional[int] = None):
+        """ adds a node (or a TensorTree) as a child of node at parent_idx, so that it is the left sibling of
+         node at right_sibling_idx. If right_sibling_idx is None then it will be appended as the last child."""
+
+        return torchtree.insert_child(self, parent_idx, node_data, right_sibling_idx)
+
 
 

@@ -1,5 +1,5 @@
 import collections
-from typing import *
+from typing import Union, Any, Optional, Generator, List, Dict, Sequence
 
 import numpy as np
 import torch
@@ -29,7 +29,7 @@ def to_matmul_compatibility(x: torch.Tensor) -> torch.Tensor:
 
 def node_incidence_matrix(
         descendants: torch.Tensor, pad_idx: int = -1, pad_mask: Optional[torch.Tensor] = None
-) -> torch.Tensor:
+) -> torch.BoolTensor:
     """
     Computes the node incidence matrix between nodes based on an
      1D or 2D tensor of descendants [seqlen] or [bsz x seqlen].
@@ -142,6 +142,55 @@ def levels(node_incidences: torch.Tensor) -> torch.Tensor:
     tensor([1, 2, 2, 3, 3, 4], dtype=torch.int64)
     """
     return node_incidences.sum(dim=-1)
+
+
+def adjacency_matrix(parents: torch.Tensor, directed: bool = False, direction_up: bool = False, pad_mask=None):
+
+    batched = parents.ndim == 2
+    if not batched:
+        parents = parents[None, :]
+
+    B, S = parents.shape
+
+    if batched and pad_mask is None:
+        pad_mask = parents < -1
+
+    parents[:, 0], root_vals = 0, parents[:, 0]  # only if right padded
+
+    print("root_vals", root_vals)
+    print("->", parents)
+
+    a = torch.arange(S, device=parents.device)
+    b = torch.arange(B, device=parents.device)
+    adj = parents.new_zeros(B, S, S, dtype=torch.bool)
+
+    if directed and direction_up:
+        adj[a, parents] = True
+    elif directed and not direction_up:
+        adj[parents] = True
+    else:
+        adj[a, parents] = True
+        adj[parents, a] = True
+
+    parents[:, 0] = root_vals
+
+    return adj
+
+
+def adjacency_matrix_unbatched(parents: torch.Tensor, directed: bool = False, direction_up: bool = False):
+    parents[0], root_val = 0, parents[0]
+    a = torch.arange(parents.size(-1), device=parents.device)
+    adj = parents.new_zeros(parents.size(-1), parents.size(-1), dtype=torch.bool)
+    if directed and direction_up:
+        adj[a, parents] = True
+    elif directed and not direction_up:
+        adj[parents, a] = True
+    else:
+        adj[a, parents] = True
+        adj[parents, a] = True
+
+    parents[0] = root_val
+    return adj
 
 
 def ancestral_matrix(node_incidences: torch.Tensor) -> torch.Tensor:
@@ -279,8 +328,6 @@ def least_common_ancestors(num_descendants: torch.Tensor) -> torch.Tensor:
     return res
 
 
-
-
 def parents_from_descendants(descendants: Sequence[int]) -> torch.Tensor:
     """ not very performant, but it works."""
 
@@ -368,7 +415,7 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     """
 
     if replacement is not None:
-        assert isinstance(replacement, (torch.Tensor, int, type(tree.labels[node_idx]))), "Replacement token needs to be tensor type"
+        assert isinstance(replacement, (torch.Tensor, int, type(tree.data.node_data[node_idx]))), "Replacement token needs to be tensor type"
 
     delete_all_children = replacement is None
 
@@ -386,11 +433,11 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     )
 
     # select indices to keep from tokens
-    if isinstance(tree.data.labels, (torch.Tensor, np.ndarray)):
-        labels = tree.data.labels[indices_to_keep]
+    if isinstance(tree.data.node_data, (torch.Tensor, np.ndarray)):
+        node_data = tree.data.node_data[indices_to_keep]
     else:
         # handle lists
-        labels = [tree.data.labels[index.item()] for index in indices_to_keep]
+        node_data = [tree.data.node_data[index.item()] for index in indices_to_keep]
 
     # and from parent and descendant tensors
     parents = tree.data.parents[indices_to_keep]
@@ -399,7 +446,7 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     # explicitly set masked token
     if not delete_all_children:
         descendants[node_idx] = 0
-        labels[node_idx] = replacement
+        node_data[node_idx] = replacement
 
     # Adjust parents after new mask_pos
     parents[node_idx + 1:][parents[node_idx + 1:] > node_idx + 1] -= num_removed_nodes
@@ -408,7 +455,8 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return new_tree(labels=labels, parents=parents, descendants=descendants)
+    return new_tree(node_data=node_data, parents=parents, descendants=descendants)
+
 
 
 def delete_children(
@@ -466,7 +514,7 @@ def delete_children(
     """
     if replacement_token is not None:
         assert isinstance(replacement_token,
-                          (torch.Tensor, int, type(tree.labels[node_idx]))), "Replacement token needs to be tensor type"
+                          (torch.Tensor, int, type(tree.node_data[node_idx]))), "Replacement token needs to be tensor type"
 
     pos_mask = node_idx + 1
     num_descendants_of_masked_node = tree.descendants[node_idx]
@@ -483,13 +531,13 @@ def delete_children(
     parents = tree.data.parents[indices_to_keep]
     descendants = tree.data.descendants[indices_to_keep]
 
-    if is_tensor_type(tree.data.labels):
-        labels = tree.data.labels[indices_to_keep]
+    if is_tensor_type(tree.data.node_data):
+        node_data = tree.data.node_data[indices_to_keep]
     else:
         # handle other sequence types, such as list of strings
-        labels = [tree.data.labels[index.item()] for index in indices_to_keep]
+        node_data = [tree.data.node_data[index.item()] for index in indices_to_keep]
 
-    labels[pos_mask] = replacement_token
+    node_data[pos_mask] = replacement_token
     descendants[node_idx] = 1
     descendants[pos_mask] = 0
 
@@ -500,7 +548,7 @@ def delete_children(
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return new_tree(labels=labels, parents=parents, descendants=descendants)
+    return new_tree(node_data=node_data, parents=parents, descendants=descendants)
 
 
 def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, torch.Tensor]):
@@ -599,10 +647,10 @@ def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, 
     node_1_end += 1  # easier slicing
 
     def swap_tokens() -> torch.Tensor:
-        tokens_swp = tree.data.labels.clone()
-        tokens_swp[node_1_swp_start:node_2_end] = tree.data.labels[node_1:node_1_end]  # copy subtree 1
-        tokens_swp[node_2_swp_end:node_1_swp_start] = tree.data.labels[node_1_end:node_2]  # move nodes between trees
-        tokens_swp[node_1:node_2_swp_end] = tree.data.labels[node_2:node_2_end]  # copy subtree 2
+        tokens_swp = tree.data.node_data.clone()
+        tokens_swp[node_1_swp_start:node_2_end] = tree.data.node_data[node_1:node_1_end]  # copy subtree 1
+        tokens_swp[node_2_swp_end:node_1_swp_start] = tree.data.node_data[node_1_end:node_2]  # move nodes between trees
+        tokens_swp[node_1:node_2_swp_end] = tree.data.node_data[node_2:node_2_end]  # copy subtree 2
         return tokens_swp
 
     def swap_parents() -> torch.Tensor:
@@ -659,12 +707,86 @@ def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, 
 
         return result_descendants
 
-    labels = swap_tokens()
+    node_data = swap_tokens()
     parents = swap_parents()
     descendants = swap_descendants(parents)
 
     return new_tree(
         parents=parents,
         descendants=descendants,
-        labels=labels
+        node_data=node_data
     )
+
+
+def insert_child(
+        tree: TensorTree, parent_idx: int, child_node_data: Union[Any, TensorTree],
+        right_sibling_idx: Optional[int] = None
+) -> TensorTree:
+    assert isinstance(
+        child_node_data,
+        (torch.Tensor, int, type(tree.data.node_data[parent_idx]), TensorTree)
+    ), f"Replacement token needs to be tensor type"
+
+    if right_sibling_idx is None:
+        # get node after this branch
+        idx_to_insert = tree.next_node_not_in_branch(parent_idx)
+        if idx_to_insert is None:
+            idx_to_insert = len(tree)
+    else:
+        idx_to_insert = right_sibling_idx
+        if parent_idx != tree.parent(right_sibling_idx):
+            raise IndexError(f"node at right_sibling_idx needs to have parent_idx as parent and not {tree.parent(right_sibling_idx)}")
+
+    if isinstance(child_node_data, TensorTree):
+        parents_to_insert = child_node_data.data.parents.clone()
+        parents_to_insert[0] = parent_idx
+        parents_to_insert[1:] += idx_to_insert
+
+        descendants_to_insert = child_node_data.data.descendants
+        node_data_to_insert = child_node_data.data.node_data
+
+    else:
+        parents_to_insert = tree.data.parents.new_tensor([parent_idx])
+        descendants_to_insert = tree.data.descendants.new_tensor([0])
+
+        if isinstance(tree.data.node_data, torch.Tensor):
+            node_data_to_insert = tree.data.node_data.new_tensor([child_node_data])
+        else:
+            # handle lists
+            node_data_to_insert = [child_node_data]
+
+    # node data
+    if isinstance(tree.data.node_data, torch.Tensor):
+        node_data = torch.cat([
+            tree.data.node_data[:idx_to_insert],
+            node_data_to_insert,
+            tree.data.node_data[idx_to_insert:],
+        ])
+    else:
+        # handle lists
+        node_data = tree.data.node_data[:idx_to_insert] + node_data_to_insert + tree.data.node_data[idx_to_insert:]
+
+    num_nodes_added = parents_to_insert.shape[0]
+
+    # parents
+    parents_after_insert = tree.data.parents[idx_to_insert:].clone()
+    parents_after_insert[parents_after_insert >= idx_to_insert] += num_nodes_added
+
+    parents = torch.cat([
+        tree.data.parents[:idx_to_insert],
+        parents_to_insert,
+        parents_after_insert,
+    ])
+
+    descendants = torch.cat([
+        tree.data.descendants[:idx_to_insert],
+        descendants_to_insert,
+        tree.data.descendants[idx_to_insert:],
+    ])
+
+    # go through each parent of node at mask_pos and adjust descendants
+    descendants[parent_idx] += num_nodes_added
+    for ancestor in tree.iter_ancestors(parent_idx):
+        descendants[ancestor] += num_nodes_added
+
+    return new_tree(node_data=node_data, parents=parents, descendants=descendants)

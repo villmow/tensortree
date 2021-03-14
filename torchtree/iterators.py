@@ -16,11 +16,15 @@ def mask_layer(node_incidences: torch.BoolTensor) -> Generator[torch.BoolTensor,
     :param node_incidence_matrix:
     :return:
     """
+    batched = node_incidences.ndim == 3
+    if not batched:
+        node_incidences = node_incidences[None, :, :]
+
     node_indicences = node_incidences.clone()
 
     while node_indicences.any():
         leaves = node_indicences.sum(-2) == 1
-        yield leaves
+        yield leaves if batched else leaves.squeeze()
         node_indicences.masked_fill_(leaves[:, :, None], 0)
 
 

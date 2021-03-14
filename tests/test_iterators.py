@@ -43,7 +43,7 @@ def get_batched_tree(token_pad_idx, left_pad=False):
     tree2 = get_tree2()
 
     batched_tokens = torchtree.utils.collate_tokens(
-        [tree1.data.labels, tree2.data.labels],
+        [tree1.data.node_data, tree2.data.node_data],
         pad_idx=token_pad_idx,
         left_pad=left_pad
     )
