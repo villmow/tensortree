@@ -96,7 +96,7 @@ class TensorTree:
         self.data = data
         self.root_idx = root_idx
 
-        if len(self.data.parents) > 0 and (self.data.parents[0] != -1 or self.data.parents[0] != 0):
+        if len(self.data.parents) > 0 and (self.data.parents[0] != -1):  # and self.data.parents[0] != 0):
             raise ValueError("Parents array seems to have wrong format.")
 
         self.__len = self.data.descendants.shape[-1]
