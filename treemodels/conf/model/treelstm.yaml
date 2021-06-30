@@ -1,5 +1,0 @@
-# @package _group_
-_target_: "treemodels.treelstm.TreeLSTMClassification"
-embedding_dim: 150
-tree_lstm_hidden_size: 150
-dropout: 0.1
