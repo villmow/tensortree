@@ -25,41 +25,44 @@ def get_tree():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 7, 7, 0, 14]
 
-    tree = torchtree.new_tree(parents=parents)
+    tree = torchtree.tree(parents=parents)
     return tree
 
 
 def get_tree2():
     parents = [-1, 0, 1, 1, 3, 3, 0, 6, 7, 7, 6, 10, 10]
     # tokens = ["the cute dog is wagging its tail", "the cute dog", "the", "cute dog", "cute", "dog", "is wagging its tail", "is wagging", "is", "wagging", "its tail", "its", "tail"]
-    # sample_tree = torchtree.new_tree(labels=tokens, parents=parents)
-    sample_tree = torchtree.new_tree(parents=parents)
+    # sample_tree = torchtree.tree(node_data=tokens, parents=parents)
+    sample_tree = torchtree.tree(parents=parents)
 
     return sample_tree
 
 
-def get_batched_tree(token_pad_idx, left_pad=False):
+def get_batched_tree(pad_idx, left_pad=False):
     tree1 = get_tree()
     tree2 = get_tree2()
 
-    batched_tokens = torchtree.utils.collate_tokens(
+    batched_tokens = torchtree.collate_tokens(
         [tree1.data.node_data, tree2.data.node_data],
-        pad_idx=token_pad_idx,
+        pad_idx=pad_idx,
         left_pad=left_pad
     )
-    batched_descendants = torchtree.utils.collate_descendants(
+    batched_descendants = torchtree.collate_descendants(
         [tree1.data.descendants, tree2.data.descendants],
-        left_pad=left_pad
+        left_pad=left_pad,
+        pad_idx=pad_idx
     )
-    batched_parents = torchtree.utils.collate_parents(
+    batched_parents = torchtree.collate_parents(
         [tree1.data.parents, tree2.data.parents],
-        left_pad=left_pad
+        left_pad=left_pad,
+        pad_idx=pad_idx
     )
     return batched_tokens, batched_descendants, batched_parents
 
 
 
 class TestIterators(TestCase):
+
     def test_mask_level(self):
         tree = get_tree()
 
@@ -86,12 +89,13 @@ class TestIterators(TestCase):
         tree.pprint()
         tree2.pprint()
 
-        tokens, descendants, parents = get_batched_tree(token_pad_idx=-1, left_pad=True)
+        tokens, descendants, parents = get_batched_tree(pad_idx=-1, left_pad=True)
         pad_mask = tokens == -1
 
         ni = torchtree.node_incidence_matrix(descendants, pad_idx=0)
 
         for level, mask in torchtree.mask_level(ni, return_level=True):
+            print(mask.byte())
             print(f"tokens in level {level}:", tokens[mask])
 
         masks = list(torchtree.mask_level(ni))
@@ -117,7 +121,7 @@ class TestIterators(TestCase):
         tree.pprint()
         tree2.pprint()
 
-        tokens, descendants, parents = get_batched_tree(token_pad_idx=-1, left_pad=False)
+        tokens, descendants, parents = get_batched_tree(pad_idx=-1, left_pad=False)
         pad_mask = tokens == -1
 
         print(tokens)
@@ -149,21 +153,23 @@ class TestIterators(TestCase):
         tree.pprint()
         tree2.pprint()
 
-        tokens_right, descendants_right, parents_right = get_batched_tree(token_pad_idx=-1, left_pad=False)
-        tokens_left, descendants_left, parents_left = get_batched_tree(token_pad_idx=-1, left_pad=False)
+        tokens_right, descendants_right, parents_right = get_batched_tree(pad_idx=-1, left_pad=False)
+        tokens_left, descendants_left, parents_left = get_batched_tree(pad_idx=-1, left_pad=True)
 
-        ni_right = torchtree.node_incidence_matrix(descendants_right, pad_idx=0)
-        ni_left = torchtree.node_incidence_matrix(descendants_left, pad_idx=0)
-
+        ni_right = torchtree.node_incidence_matrix(descendants_right, pad_idx=-1)
+        ni_left = torchtree.node_incidence_matrix(descendants_left, pad_idx=-1)
         for (level1, mask1, ), (level2, mask2,) in zip(
                 torchtree.mask_level(ni_right, return_level=True),
                 torchtree.mask_level(ni_left, return_level=True),
         ):
             assert level1 == level2
+
             print("#"*20)
+            print(mask1.byte())
+            print(mask2.byte())
             print(f"tokens in level {level1}:", tokens_right[mask1])
             print(f"tokens in level {level2}:", tokens_left[mask2])
-            print(f"parents of tokens in level {level2}:", parents_right[mask1])
-            print(f"parents of tokens in level {level2}:", parents_left[mask2])
+            print(f"parent_indices of tokens in level {level2}:", parents_right[mask1])
+            print(f"parent_indices of tokens in level {level2}:", parents_left[mask2])  # note parent indices differ when right and left padding
+
             assert (tokens_right[mask1] == tokens_left[mask2]).all()
-            assert (parents_left[mask2] == parents_right[mask1]).all()

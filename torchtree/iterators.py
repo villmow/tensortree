@@ -29,7 +29,7 @@ def mask_layer(node_incidences: torch.BoolTensor) -> Generator[torch.BoolTensor,
 
 
 def mask_level(
-        node_incidences, reverse=False, return_level: bool = False
+    node_incidences, reverse=False, return_level: bool = False
 ) -> Generator[Union[torch.BoolTensor, Tuple[int, torch.BoolTensor]], None, None]:
     """
     Generates masks, which traverse each level of the tree

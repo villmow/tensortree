@@ -5,26 +5,9 @@ import numpy as np
 import torch
 
 
-from torchtree import new_tree, TensorTree
-
-
-def is_tensor_type(sequence: Union[torch.Tensor, np.ndarray, Any]) -> bool:
-    return isinstance(sequence, (torch.Tensor, np.ndarray))
-
-
-def to_matmul_compatibility(x: torch.Tensor) -> torch.Tensor:
-    """ Brings a tensor into a matmul compatible dtype """
-    if x.is_cuda:
-        # bmm doesnt work with integers
-        return x.float()
-    elif x.dtype == torch.bool:
-        # mm doesnt work on boolean arrays
-        return x.long()
-    elif not x.is_floating_point and (x.size(-1) >= torch.iinfo(x.dtype).max):
-        # prevent overflow if we multiply uint8
-        return x.long()
-
-    return x
+from torchtree import TensorTree
+from torchtree.utils import is_tensor_type, to_matmul_compatibility
+import torchtree
 
 
 def node_incidence_matrix(
@@ -295,7 +278,7 @@ def movements(node_incidences: torch.Tensor, pad_idx: int = -1, pad_mask: Option
     if node_incidences.is_cuda:
         node_incidences = node_incidences.float()
 
-    node_levels = level(node_incidences)
+    node_levels = levels(node_incidences)
     length_of_common_prefix = ancestral_matrix(node_incidences)
 
     if batched:
@@ -351,6 +334,7 @@ def parents_from_descendants(descendants: Sequence[int]) -> torch.Tensor:
 
 
 def descendants_from_parents(parents: Sequence[int]) -> torch.Tensor:
+
     descendants = parents.new_zeros(
         parents.size(-1)
     ) if isinstance(parents, torch.Tensor) else torch.zeros(len(parents), dtype=torch.int)
@@ -455,7 +439,7 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return new_tree(node_data=node_data, parents=parents, descendants=descendants)
+    return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
 
 
 
@@ -548,7 +532,7 @@ def delete_children(
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return new_tree(node_data=node_data, parents=parents, descendants=descendants)
+    return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
 
 
 def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, torch.Tensor]):
@@ -711,7 +695,7 @@ def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, 
     parents = swap_parents()
     descendants = swap_descendants(parents)
 
-    return new_tree(
+    return torchtree.tree(
         parents=parents,
         descendants=descendants,
         node_data=node_data
@@ -734,8 +718,8 @@ def insert_child(
             idx_to_insert = len(tree)
     else:
         idx_to_insert = right_sibling_idx
-        if parent_idx != tree.parent(right_sibling_idx):
-            raise IndexError(f"node at right_sibling_idx needs to have parent_idx as parent and not {tree.parent(right_sibling_idx)}")
+        if parent_idx != tree.get_parent(right_sibling_idx):
+            raise IndexError(f"node at right_sibling_idx needs to have parent_idx as parent and not {tree.get_parent(right_sibling_idx)}")
 
     if isinstance(child_node_data, TensorTree):
         parents_to_insert = child_node_data.data.parents.clone()
@@ -789,4 +773,4 @@ def insert_child(
     for ancestor in tree.iter_ancestors(parent_idx):
         descendants[ancestor] += num_nodes_added
 
-    return new_tree(node_data=node_data, parents=parents, descendants=descendants)
+    return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
