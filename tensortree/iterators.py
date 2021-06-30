@@ -2,7 +2,7 @@ from typing import Optional, Generator, Union, Tuple
 
 import torch
 
-import torchtree
+import tensortree
 
 
 def mask_layer(node_incidences: torch.BoolTensor) -> Generator[torch.BoolTensor, None, None]:
@@ -40,7 +40,7 @@ def mask_level(
     :param node_incidence_matrix:
     :return:
     """
-    all_levels = torchtree.levels(node_incidences)
+    all_levels = tensortree.levels(node_incidences)
     max_level = all_levels.max()
     for level in range(1, max_level + 1):
         level = level if reverse else (max_level + 1) - level

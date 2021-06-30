@@ -3,10 +3,9 @@ from typing import Union, Any, Optional, Sequence
 import numpy as np
 import torch
 
-
-from torchtree import TensorTree
-from torchtree.utils import is_tensor_type, to_matmul_compatibility
-import torchtree
+import tensortree
+from tensortree import TensorTree
+from tensortree.utils import is_tensor_type, to_matmul_compatibility
 
 
 def node_incidence_matrix(
@@ -437,7 +436,7 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants)
 
 
 def delete_children(
@@ -529,7 +528,7 @@ def delete_children(
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants)
 
 
 def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, torch.Tensor]):
@@ -692,7 +691,7 @@ def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, 
     parents = swap_parents()
     descendants = swap_descendants(parents)
 
-    return torchtree.tree(
+    return tensortree.tree(
         parents=parents,
         descendants=descendants,
         node_data=node_data
@@ -770,4 +769,4 @@ def insert_child(
     for ancestor in tree.iter_ancestors(parent_idx):
         descendants[ancestor] += num_nodes_added
 
-    return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants)

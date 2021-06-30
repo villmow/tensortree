@@ -2,9 +2,9 @@ import pytest
 import torch
 
 
-import torchtree
-from torchtree import TensorTree, TreeStorage
-from torchtree import parents_from_descendants, descendants_from_parents
+import tensortree
+from tensortree import TensorTree, TreeStorage
+from tensortree import parents_from_descendants, descendants_from_parents
 
 
 def get_tree() -> TensorTree:
@@ -24,7 +24,7 @@ def get_tree() -> TensorTree:
             ╰── 11
     """
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
     return tree
 
@@ -38,18 +38,18 @@ def test_parents_to_descendants():
     assert tree.data.descendants.tolist() == other_descendants.tolist(), "descendants should be the same"
 
 
-def test_torchtree_init():
+def test_tensortree_init():
     tree = get_tree()
 
-    other_tree = torchtree.tree(parents=tree.data.parents)
+    other_tree = tensortree.tree(parents=tree.data.parents)
     assert other_tree.data.parents.tolist() == tree.data.parents.tolist()
     assert other_tree.data.descendants.tolist() == tree.data.descendants.tolist()
 
-    other_tree = torchtree.tree(descendants=tree.data.descendants)
+    other_tree = tensortree.tree(descendants=tree.data.descendants)
     assert other_tree.data.descendants.tolist() == tree.data.descendants.tolist()
     assert other_tree.data.parents.tolist() == tree.data.parents.tolist()
 
-    other_tree = torchtree.tree(descendants=tree.data.descendants, node_data=tree.data.node_data)
+    other_tree = tensortree.tree(descendants=tree.data.descendants, node_data=tree.data.node_data)
     assert other_tree.data.descendants.tolist() == tree.data.descendants.tolist()
     assert other_tree.data.parents.tolist() == tree.data.parents.tolist()
     assert list(other_tree.data.node_data) == list(tree.data.node_data)
@@ -57,7 +57,7 @@ def test_torchtree_init():
     other_tree.pprint()
 
 
-def test_torchtree_custom_node_type():
+def test_tensortree_custom_node_type():
     nodes = [
         {"name": "A", "some_attribute": False},
         {"name": "B", "some_attribute": False},
@@ -74,7 +74,7 @@ def test_torchtree_custom_node_type():
     ]
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents, node_data=nodes)
+    tree = tensortree.tree(parents=parents, node_data=nodes)
     tree.pprint()
 
     tree.pprint(node_renderer=lambda x: x["name"])
@@ -82,7 +82,7 @@ def test_torchtree_custom_node_type():
     tree.pprint(max_nodes=5, node_renderer=lambda x: x["name"])
 
 
-def test_torchtree_siblings():
+def test_tensortree_siblings():
     # tokens = ["A", "B", "C", "D", "E", "F", "G", "H"]
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
     """
@@ -100,7 +100,7 @@ def test_torchtree_siblings():
             ╰── 11
     """
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     #########
@@ -216,7 +216,7 @@ def test_torchtree_siblings():
         _ = tree.siblings(node_idx=node_idx).tolist()
 
 
-def test_torchtree_has_sibling():
+def test_tensortree_has_sibling():
     """
     0
     ├── 1
@@ -234,7 +234,7 @@ def test_torchtree_has_sibling():
 
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     node_idx = 0
@@ -307,7 +307,7 @@ def test_torchtree_has_sibling():
         tree.has_sibling(node_idx=12, check_right=False)
 
 
-def test_torchtree_right_sibling():
+def test_tensortree_right_sibling():
     """
     0. 0
     ├── 1. 1
@@ -328,7 +328,7 @@ def test_torchtree_right_sibling():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 7, 7, 0, 14]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     assert tree.right_sibling(node_idx=0) is None
@@ -349,7 +349,7 @@ def test_torchtree_right_sibling():
     assert tree.right_sibling(node_idx=15) is None
 
 
-def test_torchtree_is_leaf():
+def test_tensortree_is_leaf():
     """
     0
     ├── 1
@@ -367,7 +367,7 @@ def test_torchtree_is_leaf():
 
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     leaves = [False] * 2 + [True] * 5 + [False] * 2 + [True] * 3
@@ -381,7 +381,7 @@ def test_torchtree_is_leaf():
         tree.is_leaf(node_idx=12)
 
 
-def test_torchtree_children():
+def test_tensortree_children():
     """
     0
     ├── 1
@@ -398,7 +398,7 @@ def test_torchtree_children():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     assert tree.children(node_idx=0).tolist() == [1, 7]
@@ -421,7 +421,7 @@ def test_torchtree_children():
         tree.children(node_idx=-12).tolist()
 
 
-def test_torchtree_next_node_not_in_branch():
+def test_tensortree_next_node_not_in_branch():
     """
     0
     ├── 1
@@ -438,7 +438,7 @@ def test_torchtree_next_node_not_in_branch():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     assert tree.next_node_not_in_branch(node_idx=0) is None
@@ -458,7 +458,7 @@ def test_torchtree_next_node_not_in_branch():
         tree.next_node_not_in_branch(node_idx=12)
 
 
-def test_torchtree_parent():
+def test_tensortree_parent():
     """
     0
     ├── 1
@@ -475,7 +475,7 @@ def test_torchtree_parent():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     assert tree.get_parent(node_idx=0) is None
@@ -486,7 +486,7 @@ def test_torchtree_parent():
         tree.get_parent(node_idx=12)
 
 
-def test_torchtree_to_string():
+def test_tensortree_to_string():
     """
     0
     ├── 1
@@ -504,7 +504,7 @@ def test_torchtree_to_string():
     # FIXME
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
     for i in range(len(tree)):
         i += 1
@@ -514,7 +514,7 @@ def test_torchtree_to_string():
     print(str(tree))
 
 
-def test_torchtree_replace_branch_string():
+def test_tensortree_replace_branch_string():
     """
     0
     ├── 1
@@ -531,7 +531,7 @@ def test_torchtree_replace_branch_string():
     """
     tokens = [t for t in "ABCDEFGHIJKL"]
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
-    tree = torchtree.tree(node_data=tokens, parents=parents)
+    tree = tensortree.tree(node_data=tokens, parents=parents)
     tree.pprint()
     assert len(tree) == 12
 
@@ -540,7 +540,7 @@ def test_torchtree_replace_branch_string():
     assert len(other_tree) == 7
 
 
-def test_torchtree_getitem():
+def test_tensortree_getitem():
     """
     0. A
     ├── 1. B
@@ -557,7 +557,7 @@ def test_torchtree_getitem():
     """
     tokens = [t for t in "ABCDEFGHIJKL"]
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
-    tree = torchtree.tree(node_data=tokens, parents=parents)
+    tree = tensortree.tree(node_data=tokens, parents=parents)
 
     for subtree in tree:
         print("-"*20)
@@ -578,7 +578,7 @@ def test_torchtree_getitem():
     #fixme fix this test
 
 
-def test_torchtree_delete_node():
+def test_tensortree_delete_node():
     """
     0. 0
     ├── 1. 1
@@ -599,7 +599,7 @@ def test_torchtree_delete_node():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 7, 7, 0, 14]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     other_tree = tree.delete_node(1)
@@ -626,7 +626,7 @@ def test_torchtree_delete_node():
     other_tree.pprint()
 
 
-def test_torchtree_dunder_delete():
+def test_tensortree_delete_node_with_replacement():
     """
     0. 0
     ├── 1. 1
@@ -647,83 +647,7 @@ def test_torchtree_dunder_delete():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 7, 7, 0, 14]
 
-    tree = torchtree.tree(parents=parents)
-    tree.pprint()
-
-    del tree[1]
-    tree.pprint()
-    assert len(tree) == len(parents) - 6
-    return
-    other_tree = tree.delete_node(7)
-    other_tree.pprint()
-    assert len(other_tree) == len(tree) - 7
-
-    other_tree = tree.delete_node(14)
-    other_tree.pprint()
-    assert len(other_tree) == len(tree) - 2
-
-    other_tree = tree.delete_node(4)
-    other_tree.pprint()
-    assert len(other_tree) == len(tree) - 1
-
-    # delete root returns empty tree
-    other_tree = tree.delete_node(0)
-    assert len(other_tree) == 0
-    print(other_tree)
-    other_tree.pprint()
-
-
-def test_torchtree_dunder_setitem():
-    """
-    0. 0
-    ├── 1. 1
-    │   ├── 2. 2
-    │   ├── 3. 3
-    │   ├── 4. 4
-    │   ├── 5. 5
-    │   ╰── 6. 6
-    ├── 7. 7
-    │   ├── 8. 8
-    │   │   ├── 9. 9
-    │   │   ├── 10. 10
-    │   │   ╰── 11. 11
-    │   ├── 12. 12
-    │   ╰── 13. 13
-    ╰── 14. 14
-        ╰── 15. 15
-    """
-    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 7, 7, 0, 14]
-
-    tree = torchtree.tree(parents=parents)
-    tree.pprint()
-
-    tree[1], tree[7] = tree[7], tree[1]
-    tree.pprint()
-    return
-
-
-def test_torchtree_delete_node_with_replacement():
-    """
-    0. 0
-    ├── 1. 1
-    │   ├── 2. 2
-    │   ├── 3. 3
-    │   ├── 4. 4
-    │   ├── 5. 5
-    │   ╰── 6. 6
-    ├── 7. 7
-    │   ├── 8. 8
-    │   │   ├── 9. 9
-    │   │   ├── 10. 10
-    │   │   ╰── 11. 11
-    │   ├── 12. 12
-    │   ╰── 13. 13
-    ╰── 14. 14
-        ╰── 15. 15
-    """
-    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 7, 7, 0, 14]
-
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     other_tree = tree.delete_node(1, replacement_token=999)
@@ -749,7 +673,7 @@ def test_torchtree_delete_node_with_replacement():
     other_tree.pprint()
 
 
-def test_torchtree_swap():
+def test_tensortree_swap():
     """
     0
     ├── 1
@@ -766,7 +690,7 @@ def test_torchtree_swap():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     print("#" * 50)
@@ -786,7 +710,7 @@ def test_torchtree_swap():
     assert other_tree.data.parents.tolist() == parents_from_descendants(other_tree.data.descendants).tolist()
 
 
-def test_torchtree_insert_child_int():
+def test_tensortree_insert_child_int():
     """
     0
     ├── 1
@@ -803,7 +727,7 @@ def test_torchtree_insert_child_int():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
 
@@ -822,7 +746,7 @@ def test_torchtree_insert_child_int():
         other_tree.pprint()
 
 
-def test_torchtree_insert_child_int_with_right_sibling():
+def test_tensortree_insert_child_int_with_right_sibling():
     """
     0
     ├── 1
@@ -839,7 +763,7 @@ def test_torchtree_insert_child_int_with_right_sibling():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     other_tree = tree.insert_child(0, 666, right_sibling_idx=1)
@@ -877,7 +801,7 @@ def test_torchtree_insert_child_int_with_right_sibling():
         other_tree.pprint()
 
 
-def test_torchtree_insert_child_tree_right_sibling():
+def test_tensortree_insert_child_tree_right_sibling():
     """
     0
     ├── 1
@@ -895,7 +819,7 @@ def test_torchtree_insert_child_tree_right_sibling():
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
     print("will attach a subtree to this tree:")
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     print("this subtree:")
@@ -914,7 +838,7 @@ def test_torchtree_insert_child_tree_right_sibling():
 
 
 
-def test_torchtree_insert_child_tree():
+def test_tensortree_insert_child_tree():
     """
     0
     ├── 1
@@ -932,7 +856,7 @@ def test_torchtree_insert_child_tree():
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
     print("will attach a subtree to this tree:")
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     print("this subtree:")
@@ -954,7 +878,7 @@ def test_torchtree_insert_child_tree():
         other_tree.pprint()
 
 
-def test_torchtree_append_to_only_root():
+def test_tensortree_append_to_only_root():
     """
     0
     ├── 1
@@ -973,17 +897,17 @@ def test_torchtree_append_to_only_root():
 
     # create single token tree and append the other tree to set a new root
     print("will attach a subtree to this tree:")
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     print("this subtree:")
-    only_root = torchtree.tree(node_data=[999], parents=[-1], descendants=[0])
+    only_root = tensortree.tree(node_data=[999], parents=[-1], descendants=[0])
     other_tree = only_root.insert_child(0, tree)
 
     other_tree.pprint()
 
 
-def test_torchtree_height():
+def test_tensortree_height():
     """
     0
     ├── 1
@@ -1002,10 +926,10 @@ def test_torchtree_height():
 
     # create single token tree and append the other tree to set a new root
     print("will attach a subtree to this tree:")
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
-    from torchtree import mask_layer
+    from tensortree import mask_layer
     heights = torch.zeros_like(tree.data.parents)
 
     for i, layer_mask in enumerate(mask_layer(tree.node_incidence_matrix())):
@@ -1014,17 +938,17 @@ def test_torchtree_height():
     print(heights)
 
     node_data = [f"height: {h.item()}" for h in heights]
-    tree = torchtree.tree(parents=parents, node_data=heights)
+    tree = tensortree.tree(parents=parents, node_data=heights)
     tree.pprint()
 
     print("this subtree:")
-    only_root = torchtree.tree(node_data=[999], parents=[-1], descendants=[0])
+    only_root = tensortree.tree(node_data=[999], parents=[-1], descendants=[0])
     other_tree = only_root.insert_child(0, tree)
 
     other_tree.pprint()
 
 
-def test_torchtree_leaves_per_subtree():
+def test_tensortree_leaves_per_subtree():
     """
     0
     ├── 1
@@ -1041,14 +965,14 @@ def test_torchtree_leaves_per_subtree():
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     leaves = tree.leaves_mask()
     print(torch.cumsum(leaves, dim=-1))
 
 
-def test_torchtree_insert_child_tree_custom_node_types():
+def test_tensortree_insert_child_tree_custom_node_types():
     """
     0
     ├── 1
@@ -1080,7 +1004,7 @@ def test_torchtree_insert_child_tree_custom_node_types():
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
 
     print("will attach a subtree to this tree:")
-    tree = torchtree.tree(parents=parents, node_data=nodes)
+    tree = tensortree.tree(parents=parents, node_data=nodes)
     tree.pprint(node_renderer=lambda x: x["name"])
 
     print("this subtree:")
@@ -1102,7 +1026,7 @@ def test_torchtree_insert_child_tree_custom_node_types():
         other_tree.pprint(node_renderer=lambda x: x["name"])
 
 
-def test_torchtree_merge_order():
+def test_tensortree_merge_order():
     """
     0
     ├── 1
@@ -1118,7 +1042,7 @@ def test_torchtree_merge_order():
             ╰── 11
     """
     parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
-    tree = torchtree.tree(parents=parents)
+    tree = tensortree.tree(parents=parents)
     tree.pprint()
 
     merge_order = [4, 2, 1, 1, 1, 1, 1, 3, 2, 1, 1, 1]

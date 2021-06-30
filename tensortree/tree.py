@@ -4,9 +4,9 @@ from typing import Sequence, Any, Union, List, Optional, Tuple, Generator, Calla
 import numpy as np
 import torch
 
-import torchtree
-from torchtree.render import ContRoundStyle, Style, Row
-from torchtree.utils import to_torch
+import tensortree
+from tensortree.render import ContRoundStyle, Style, Row
+from tensortree.utils import to_torch
 
 
 # Define a type alias for the content of the node sequence
@@ -36,11 +36,11 @@ class TreeStorage:
 
         if self.parents is None:  # compute parents from descendants
             descendants: torch.Tensor = to_torch(self.descendants).long()
-            parents = torchtree.parents_from_descendants(self.descendants)
+            parents = tensortree.parents_from_descendants(self.descendants)
 
         elif self.descendants is None:  # compute descendants from parents
             parents: torch.Tensor = to_torch(self.parents).long()
-            descendants = torchtree.descendants_from_parents(parents)
+            descendants = tensortree.descendants_from_parents(parents)
 
         else:  # convert everything to a tensor
             parents: torch.Tensor = to_torch(self.parents).long()
@@ -180,7 +180,7 @@ class TensorTree:
 
     def node_incidence_matrix(self):
         """ Returns the node incidence matrix for this subtree"""
-        return torchtree.node_incidence_matrix(self.descendants)
+        return tensortree.node_incidence_matrix(self.descendants)
 
     def detach(self):
         """ Returns a new tree rooted at self.root_idx """
@@ -237,7 +237,7 @@ class TensorTree:
     def depths(self):
         """ Depth of each subtree"""
 
-        from torchtree import mask_layer
+        from tensortree import mask_layer
         depths = torch.zeros_like(self.descendants)
 
         for i, layer_mask in enumerate(mask_layer(self.node_incidence_matrix())):
@@ -418,8 +418,8 @@ class TensorTree:
         :return:
         """
         def format_nodes() -> Generator[Row, None, None]:
-            incidences = torchtree.node_incidence_matrix(self.descendants)
-            levels = torchtree.levels(incidences).tolist()
+            incidences = tensortree.node_incidence_matrix(self.descendants)
+            levels = tensortree.levels(incidences).tolist()
             active_levels = set()
 
             def make_row(token, node_idx, level, active_levels, fill, replace_token: bool = False):
@@ -550,19 +550,19 @@ class TensorTree:
             #descendants: [  9,  7,  0,  5,  3,  2,  1,  0,  0,  0]
             #children:    [  2,  2,  0,  2,  1,  1,  1,  0,  0,  0]
             """
-        return torchtree.delete_subtree(self, node_idx, replacement_token)
+        return tensortree.delete_subtree(self, node_idx, replacement_token)
 
     def delete_children(self, node_idx: int, replacement_token: Optional[Any] = None):
-        return torchtree.delete_subtree(self, node_idx, replacement_token)
+        return tensortree.delete_subtree(self, node_idx, replacement_token)
 
     def swap(self, node_idx: int, other_node_idx: int):
-        return torchtree.swap(self, node_idx, other_node_idx)
+        return tensortree.swap(self, node_idx, other_node_idx)
 
     def insert_child(self, parent_idx: int, node_data: Any, right_sibling_idx: Optional[int] = None):
         """ adds a node (or a TensorTree) as a child of node at parent_idx, so that it is the left sibling of
          node at right_sibling_idx. If right_sibling_idx is None then it will be appended as the last child."""
 
-        return torchtree.insert_child(self, parent_idx, node_data, right_sibling_idx)
+        return tensortree.insert_child(self, parent_idx, node_data, right_sibling_idx)
 
 
 
