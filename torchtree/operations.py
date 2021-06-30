@@ -1,5 +1,4 @@
-import collections
-from typing import Union, Any, Optional, Generator, List, Dict, Sequence
+from typing import Union, Any, Optional, Sequence
 
 import numpy as np
 import torch
@@ -128,7 +127,6 @@ def levels(node_incidences: torch.Tensor) -> torch.Tensor:
 
 
 def adjacency_matrix(parents: torch.Tensor, directed: bool = False, direction_up: bool = False, pad_mask=None):
-
     batched = parents.ndim == 2
     if not batched:
         parents = parents[None, :]
@@ -440,7 +438,6 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
         descendants[ancestor] -= num_removed_nodes
 
     return torchtree.tree(node_data=node_data, parents=parents, descendants=descendants)
-
 
 
 def delete_children(
