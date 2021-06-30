@@ -1,24 +1,28 @@
 from setuptools import setup, find_namespace_packages
 
-setup(name='torchtree',
-      version='0.1a',
-      python_requires='>=3.7',
-      description='Machine learning with trees in PyTorch',
-      author='Johannes Villmow',
-      author_email='johannes.villmow@hs-rm.de',
-      license='gnu',
-      packages=find_namespace_packages(),
-      install_requires=[
-            "torch",
-            "pytorch_lightning",
-            "hydra",
-            "nltk",
-            "datasets",
-            "wandb",
-      ],
-      entry_points={
-        'console_scripts': [
-        ],
-    },
+setup(
+    name='tensortree',
+    packages=["tensortree"],
+    version='0.1',
+    python_requires='>=3.7',
+    description='Represent trees with tensors and perform fast calculations and modifications.',
+    author='Johannes Villmow',
+    author_email='johannes.villmow@hs-rm.de',
+    url='https://github.com/villmow/tensortree',
+    download_url='https://github.com/villmow/tensortree/archive/refs/tags/v0.1.tar.gz',
+    license='MIT',
+    install_requires=[
+        "numpy",
+        "torch",
+    ],
+    keywords=['tree', 'tensor', 'pytorch', 'pytorch tree', 'tensor tree'],  # Keywords that define your package best
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
+        'Intended Audience :: Developers',  # Define that your audience are developers
+        'Topic :: Scientific/Engineering',
+        'License :: OSI Approved :: MIT Software License',
+        'Programming Language :: Python :: 3',
+    ],
 )
 
