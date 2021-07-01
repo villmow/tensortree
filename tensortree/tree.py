@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 import tensortree
-from tensortree.render import ContRoundStyle, Style, Row
+from tensortree.render import Style, ContRoundStyle, format_tree
 from tensortree.utils import to_torch
 
 
@@ -49,6 +49,7 @@ class TreeStorage:
         # node_data may be nothing, in that case simply enumerate the nodes
         if self.node_data is None:
             node_data = torch.arange(len(descendants)).to(descendants)
+            # FIXME make node_data optional
         else:
             # node_data is a sequence of strings (tensor incompatible)
             try:
@@ -65,8 +66,9 @@ class TreeStorage:
 
 
 def tree(
-    parents: Optional[TensorType] = None, descendants: Optional[TensorType] = None,
-    node_data: Optional[Sequence[LabelType]] = None
+    parents: Optional[TensorType] = None,
+    node_data: Optional[Sequence[LabelType]] = None,
+    descendants: Optional[TensorType] = None,
 ):
     """ Constructor to build a tree. """
 
@@ -118,6 +120,9 @@ class TensorTree:
 
         if node_idx is None:
             node_idx = self.root_idx  # use root
+
+        if node_idx == self.root_idx:
+            return self
 
         return TensorTree(self.data, node_idx)
 
@@ -294,7 +299,7 @@ class TensorTree:
 
         :param node_idx: Node to get the children
         """
-        return self.children_mask(node_idx).nonzero().squeeze(-1)
+        return self.children_mask(node_idx).nonzero(False).squeeze(-1)
 
     # siblings
     def iter_siblings(self, node_idx: Union[int, torch.Tensor], include_left_siblings: bool = True, include_right_siblings: bool = True) -> Generator[torch.Tensor, None, None]:
@@ -325,7 +330,7 @@ class TensorTree:
             if include_right_siblings and reached_node:
                 yield node
 
-    def right_sibling(self, node_idx: Union[int, torch.Tensor]) -> torch.Tensor:
+    def right_sibling(self, node_idx: Union[int, torch.Tensor]) -> Optional[torch.Tensor]:
         next_node = self.next_node_not_in_branch(node_idx)
         if next_node is not None:
             if self.get_parent(next_node) == self.get_parent(node_idx):
@@ -417,60 +422,8 @@ class TensorTree:
         :param style: Style the tree.
         :return:
         """
-        def format_nodes() -> Generator[Row, None, None]:
-            incidences = tensortree.node_incidence_matrix(self.descendants)
-            levels = tensortree.levels(incidences).tolist()
-            active_levels = set()
 
-            def make_row(token, node_idx, level, active_levels, fill, replace_token: bool = False):
-                pre = "".join(style.vertical if l in active_levels else "    " for l in range(level - 1))
-
-                if level == 0:
-                    fill = ""
-
-                if isinstance(token, torch.Tensor):
-                    token = token.item()
-
-                if replace_token:
-                    token = "[...]"
-                else:
-                    token = node_renderer(token)
-
-                return Row(pre, fill, f"{node_idx}. {token}")
-
-            for node_idx, (token, lev) in enumerate(zip(self.node_data, levels), start=self.root_idx):
-                fill = style.end
-
-                if self.has_sibling(node_idx, check_left=False, check_right=True):
-                    fill = style.cont
-                    if not self.is_leaf(node_idx):
-                        active_levels.add((lev - 1))
-                elif (lev - 1) in active_levels:
-                    active_levels.remove(lev - 1)
-
-                row = make_row(token, node_idx, lev, active_levels, fill)
-
-                yield row
-
-                # code for stopping at max_nodes and finish open levels below
-                # maybe we break before printing this row, to print a shorter version of this tree
-                if max_nodes is not None and node_idx >= (max_nodes - len(active_levels) - 2):
-
-                    # this was the last node of this branch
-                    if fill == style.end:
-                        next_node = self.next_node_not_in_branch(node_idx)
-                    elif fill == style.cont:
-                        next_node = self.right_sibling(node_idx)
-                    active_levels.add(None)
-
-                    while active_levels and next_node:
-                        yield make_row(None, next_node, levels[next_node], active_levels, style.end, replace_token=True)
-                        next_node = self.step_out(next_node)
-                        some_lev = active_levels.pop()
-
-                    break
-
-        return "\n".join("".join(row) for row in format_nodes())
+        return format_tree(tree=self, max_nodes=max_nodes, node_renderer=node_renderer, style=style)
 
     def pprint(
             self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = str,
