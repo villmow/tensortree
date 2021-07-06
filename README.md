@@ -74,9 +74,9 @@ Additionally the `max_nodes` argument can be used to restrict the amount of node
 ### Navigation
 
 Each node is identified by a `node_idx`: The index of the node in the original array (recap that this needs
-to be sorted pre-order depth first). Most functions of a `TensorTree` return indices to nodes. Either a single
-index, a tensor of indices (which can be used for advanced indexing like in pytorch tensors), or a boolean
-mask to index a tensor. Sometimes an iterable over indices is returned (if the needed indices can't be computed
+to be sorted pre-order depth first). Most functions of a `TensorTree` return indices of nodes. Either the index 
+of a single node, a tensor of indices (which can be used for advanced indexing like in pytorch tensors), or a boolean
+mask to index a tensor. Sometimes an iterable over indices is returned (if the indices can't be computed
 directly).
 
 You can navigate inside the tree using the `node_idx` of a node. To select subtree as a view (still located in the bigger tree, 
@@ -106,4 +106,3 @@ You can retrieve the three arrays (`node_data`, `descendants`, `parents`) for a 
 
 You can retrieve a nodes parent by using `tree.get_parent(node_idx)`.
 
-More to come.

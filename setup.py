@@ -3,13 +3,13 @@ from setuptools import setup, find_namespace_packages
 setup(
     name='tensortree',
     packages=["tensortree"],
-    version='0.1',
+    version='0.2',
     python_requires='>=3.7',
     description='Represent trees with tensors and perform fast calculations and modifications.',
     author='Johannes Villmow',
     author_email='johannes.villmow@hs-rm.de',
     url='https://github.com/villmow/tensortree',
-    download_url='https://github.com/villmow/tensortree/archive/refs/tags/v0.1.tar.gz',
+    download_url='https://github.com/villmow/tensortree/archive/refs/tags/v0.2.tar.gz',
     license='MIT',
     install_requires=[
         "numpy",
