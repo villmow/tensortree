@@ -80,7 +80,7 @@ def format_tree(
 
             return Row(pre, fill, f"{node_idx}. {token}")
 
-        for node_idx, (token, lev) in enumerate(zip(tree.node_data, levels), start=tree.root_idx):
+        for node_idx, (token, lev) in enumerate(zip(tree.node_data, levels), start=0):
             fill = style.end
 
             if tree.has_sibling(node_idx, check_left=False, check_right=True):

@@ -80,6 +80,7 @@ def test_tensortree_custom_node_type():
     tree.pprint(node_renderer=lambda x: x["name"])
 
     tree.pprint(max_nodes=5, node_renderer=lambda x: x["name"])
+    tree[7].pprint(node_renderer=lambda x: x["name"])
 
 
 def test_tensortree_siblings():
@@ -414,8 +415,8 @@ def test_tensortree_children():
     assert tree.children(node_idx=10).tolist() == []
     assert tree.children(node_idx=11).tolist() == []
 
-    with pytest.raises(IndexError):
-        tree.children(node_idx=12).tolist()
+    # with pytest.raises(IndexError):
+    tree.children(node_idx=12).tolist()
 
     with pytest.raises(IndexError):
         tree.children(node_idx=-12).tolist()
@@ -1068,3 +1069,31 @@ def test_tensortree_merge_order():
         print(processed)
         print(ni)
 
+
+def test_adjacency_matrix():
+    """
+        0
+        ├── 1
+        │   ├── 2
+        │   ├── 3
+        │   ├── 4
+        │   ├── 5
+        │   ╰── 6
+        ╰── 7
+            ╰── 8
+                ├── 9
+                ├── 10
+                ╰── 11
+        """
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    parents = [-1,  0,  1,  2,  2,  1,  0,  6]
+    tree = tensortree.tree(parents=parents)
+    tree.pprint()
+
+    for node_idx in range(len(tree)):
+        children_mask_with_parents = (tree.parents == node_idx)
+        children_mask_adjacency = tree.adjacency_matrix()[node_idx]
+        print(children_mask_adjacency.byte())
+        print(children_mask_with_parents.byte())
+        print("-------------")
+        assert torch.all(children_mask_adjacency == children_mask_with_parents), "Both arrays should be equal"

@@ -5,6 +5,35 @@ from typing import Union, List, Optional, Sequence, Any
 import numpy as np
 import torch
 
+import functools
+
+
+def validate_index(_func=None, allow_none: bool = False):
+    """ Should be only used inside TensorTree and on functions that receive
+    a node_idx as the first argument after self.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, node_idx, *args, **kwargs):
+
+            if node_idx is None:
+                if not allow_none:
+                    raise IndexError(f"Index {node_idx} is not allowed in this method.")
+            else:
+                if node_idx < 0 or node_idx >= len(self):
+                    raise IndexError(
+                        f"Index {node_idx} is out of bounds for this"
+                        f" {'sub' if self.is_subtree() else ''}tree with {len(self)} nodes."
+                    )
+
+            return func(self, node_idx, *args, **kwargs)
+        return wrapper
+
+    if _func is None:
+        return decorator  # 2
+    else:
+        return decorator(_func)
+
 
 def linecount(filename: Union[pl.Path, str]) -> int:
     with open(filename, 'rb') as f:
@@ -47,6 +76,22 @@ def to_matmul_compatibility(x: torch.Tensor) -> torch.Tensor:
     elif not x.is_floating_point and (x.size(-1) >= torch.iinfo(x.dtype).max):
         # prevent overflow if we multiply uint8
         return x.long()
+
+    return x
+
+
+def apply_pad_mask_to_higher_dim_tensor(x: torch.Tensor, pad_idx: int, pad_mask: torch.Tensor):
+    assert x.ndimension() == (pad_mask.ndimension() + 1), "x should have one dimension more than pad_mask"
+
+    if pad_mask.ndimension() == 2:
+        x[pad_mask] = pad_idx
+        x[pad_mask[:, None, :].expand_as(x)] = pad_idx
+    elif pad_mask.ndimension() == 1:
+        # then x is 2-dimensional
+        x[pad_mask] = pad_idx
+        x[:, pad_mask] = pad_idx
+    else:
+        raise ValueError("pad mask should be either 1d or 2d")
 
     return x
 
