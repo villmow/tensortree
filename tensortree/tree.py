@@ -6,7 +6,7 @@ import torch
 
 import tensortree
 from tensortree.render import Style, ContRoundStyle, format_tree
-from tensortree.utils import to_torch, validate_index
+from tensortree.utils import to_torch, validate_index, replace_whitespace
 from functools import lru_cache
 
 
@@ -494,6 +494,13 @@ class TensorTree:
     def leaf_indices(self) -> torch.Tensor:
         return self.leaves_mask().nonzero(as_tuple=False).squeeze(-1)
 
+    def leaves(self) -> Union[torch.Tensor, list]:
+        if isinstance(self.node_data, torch.Tensor):
+            return self.node_data[self.leaves_mask()]
+        else:
+            return [self.get_node_data(i) for i in self.leaf_indices()]
+
+
     # children
     @validate_index
     def iter_children(self, node_idx: Union[int, torch.Tensor]) -> Generator[torch.Tensor, None, None]:
@@ -657,7 +664,7 @@ class TensorTree:
         return format_tree(tree=self, max_nodes=max_nodes, node_renderer=node_renderer, style=style)
 
     def pprint(
-            self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = str,
+            self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = replace_whitespace,
             style: Union[Style] = ContRoundStyle,
     ):
         """ See pformat for description of arguments."""

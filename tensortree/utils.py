@@ -15,7 +15,6 @@ def validate_index(_func=None, allow_none: bool = False):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, node_idx, *args, **kwargs):
-
             if node_idx is None:
                 if not allow_none:
                     raise IndexError(f"Index {node_idx} is not allowed in this method.")
@@ -133,3 +132,55 @@ def load_embedding(embed_dict, vocab, embedding):
         if token in embed_dict:
             embedding.weight.data[idx] = embed_dict[token]
     return embedding
+
+
+
+whitespace_replacemap = {
+    " ": "·",
+    "\t": "↹",
+    "\v": "↦",
+    "\n": "⏎",
+    "\r": "↵",
+}
+whitespace_restoremap = {v: k for k, v in whitespace_replacemap.items()}
+
+import re
+RE_REPLACE_WHITESPACE = re.compile(
+    '|'.join(
+        sorted(
+            re.escape(k) for k in whitespace_replacemap
+        )
+    )
+)
+RE_RESTORE_WHITESPACE = re.compile(
+    '|'.join(
+        sorted(
+            re.escape(k) for k in whitespace_restoremap
+        )
+    )
+)
+
+
+def replace_whitespace(text: Union[str, List[str]]):
+    """
+    Replaces tabs, newlines and spaces with unicode symbols
+    """
+
+    def _replace(string: str) -> str:
+        return RE_REPLACE_WHITESPACE.sub(
+            lambda m: whitespace_replacemap[m.group()],
+            string
+        )
+
+    if isinstance(text, (list, tuple)):
+        res = [_replace(string) for string in text]
+        return text.__class__(res)
+
+    return _replace(text)
+
+
+def restore_whitespace(text: str) -> str:
+    return  RE_RESTORE_WHITESPACE.sub(
+            lambda m: whitespace_restoremap[m.group()],
+            text
+        )

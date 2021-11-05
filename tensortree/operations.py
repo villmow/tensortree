@@ -370,7 +370,7 @@ def movements(node_incidences: torch.Tensor, pad_idx: int = -1, pad_mask: Option
     if node_incidences.is_cuda:
         node_incidences = node_incidences.float()
 
-    node_levels = levels(node_incidences) - 1
+    node_levels = levels(node_incidences)
     length_of_common_prefix = ancestral_matrix(node_incidences)
 
     if batched:
