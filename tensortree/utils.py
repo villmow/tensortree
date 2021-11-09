@@ -167,10 +167,13 @@ def replace_whitespace(text: Union[str, List[str]]):
     """
 
     def _replace(string: str) -> str:
-        return RE_REPLACE_WHITESPACE.sub(
-            lambda m: whitespace_replacemap[m.group()],
-            string
-        )
+        if isinstance(string, str):
+            return RE_REPLACE_WHITESPACE.sub(
+                lambda m: whitespace_replacemap[m.group()],
+                string
+            )
+        else:
+            return string
 
     if isinstance(text, (list, tuple)):
         res = [_replace(string) for string in text]
