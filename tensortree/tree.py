@@ -801,4 +801,37 @@ class TensorTree:
         return tensortree.insert_child(self, parent_idx, node_data, right_sibling_idx)
 
 
+def equals(tree1: TensorTree, tree2: TensorTree):
+    if type(tree1.node_data) is not type(tree2.node_data):
+        return False
+
+    if len(tree1) != len(tree2):
+        return False
+
+    if torch.any(tree1.descendants != tree2.descendants):
+        return False
+
+    if torch.any(tree1.parents != tree2.parents):
+        return False
+
+    if len(tree1.additional_data) != len(tree2.additional_data):
+        return False
+
+    if isinstance(tree1.node_data, list):
+        if any(x1 != x2 for x1, x2 in zip(tree1.node_data, tree2.node_data)):
+            return False
+
+        for data1, data2 in zip(tree1.additional_data, tree2.additional_data):
+            if any(x1 != x2 for x1, x2 in zip(data1, data2)):
+                return False
+
+    else:
+        if torch.any(tree1.node_data != tree2.node_data):
+            return False
+
+        for data1, data2 in zip(tree1.additional_data, tree2.additional_data):
+            if torch.any(data1 != data2):
+                return False
+
+    return True
 
