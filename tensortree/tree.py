@@ -7,7 +7,6 @@ import torch
 import tensortree
 from tensortree.render import Style, ContRoundStyle, format_tree
 from tensortree.utils import to_torch, validate_index, replace_whitespace
-from functools import lru_cache
 
 
 # Define a type alias for the content of the node sequence
@@ -294,7 +293,6 @@ class TensorTree:
         """ Returns the node incidence matrix for this tree"""
         return tensortree.node_incidence_matrix(self.descendants)
 
-    @lru_cache(maxsize=1)
     def adjacency_matrix(
             self, directed: bool = True, direction_up: bool = False, loop_root: bool = False) -> torch.BoolTensor:
         """
