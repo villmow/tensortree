@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Sequence, Any, Union, List, Optional, Tuple, Generator, Callable, Literal
 
 import numpy as np
@@ -28,6 +28,9 @@ class TreeStorage:
 
     # some operations (swapping) only work when node_data is a torch.Tensor
     node_data: Union[torch.Tensor, Sequence[LabelType]] = None
+
+    # additional tensors to store
+    additional_data: Optional[List[Union[torch.Tensor, Sequence[LabelType]]]] = field(default_factory=list)
 
     format: Literal['torch', 'numpy'] = 'torch'
 
@@ -61,6 +64,13 @@ class TreeStorage:
         if descendants.numel() != len(node_data) != parents.numel():
             raise ValueError(f"All arrays need to be of same length and not ({descendants.numel()}, {len(node_data)}, {parents.numel()}).")
 
+        if self.additional_data is None:
+            object.__setattr__(self, 'additional_data', [])
+
+        for element in self.additional_data:
+            if type(element) is not type(node_data) and len(node_data) != len(element):
+                raise ValueError("additional data must have same shape and type as node data")
+
         object.__setattr__(self, 'parents', parents)
         object.__setattr__(self, 'descendants', descendants)
         object.__setattr__(self, 'node_data', node_data)
@@ -70,10 +80,13 @@ def tree(
     parents: Optional[TensorType] = None,
     node_data: Optional[Sequence[LabelType]] = None,
     descendants: Optional[TensorType] = None,
+    additional_data: Optional[List[Sequence[int]]] = None
 ):
     """ Constructor to build a tree. """
 
-    return TensorTree.from_array(parents=parents, descendants=descendants, node_data=node_data)
+    return TensorTree.from_array(
+        parents=parents, descendants=descendants, node_data=node_data, additional_data=additional_data,
+    )
 
 
 class TensorTree:
@@ -82,17 +95,18 @@ class TensorTree:
     def from_array(
             cls,
             parents: Optional[TensorType] = None, descendants: Optional[TensorType] = None,
-            node_data: Optional[Sequence[LabelType]] = None
+            node_data: Optional[Sequence[LabelType]] = None, additional_data: Optional[List[Sequence[int]]] = None
     ):
         """ Obtain a tree from arrays. A tree can be either defined by a parents or a descendants tensor.
         Additional nodes list can be passed if it contains a string, it will be used for rendering.
         """
-        return cls(TreeStorage(parents, descendants, node_data))
+        return cls(TreeStorage(parents, descendants, node_data, additional_data))
 
     @classmethod
-    def from_node_incidences(cls, node_incidences: torch.Tensor, node_data: Optional[Sequence[LabelType]] = None):
+    def from_node_incidences(cls, node_incidences: torch.Tensor, node_data: Optional[Sequence[LabelType]] = None,
+                             additional_data: Optional[List[Sequence[int]]] = None):
         descendants = tensortree.descendants_from_node_incidences(node_incidences)
-        return cls.from_array(descendants=descendants, node_data=node_data)
+        return cls.from_array(descendants=descendants, node_data=node_data, additional_data=additional_data)
 
     def __init__(self, data: TreeStorage, root_idx: int = 0):
         """
@@ -136,10 +150,18 @@ class TensorTree:
     def detach(self):
         """ Returns a new tree rooted at self.root_idx """
         from copy import deepcopy
+        if isinstance(self.node_data, torch.Tensor):
+            new_node_data = self.node_data.clone()
+            new_additional_data = [data.clone() for data in self.additional_data]
+        else:
+            new_node_data=deepcopy(self.node_data)
+            new_additional_data = [deepcopy(data) for data in self.additional_data]
+
         return self.from_array(
             parents=self.parents.clone(),
             descendants=self.descendants.clone(),
-            node_data=deepcopy(self.node_data)
+            node_data=new_node_data,
+            additional_data=new_additional_data
         )
 
     def is_subtree(self) -> bool:
@@ -201,6 +223,16 @@ class TensorTree:
 
         return self.data.parents[node_idx]
 
+    @validate_index
+    def get_additional_node_data(self, node_idx: Union[int, torch.Tensor]) -> List[Any]:
+        """
+        Returns the additional data of a node.
+
+        :param node_idx: The index of the node.
+        """
+        node_idx = self._to_global_idx(node_idx)
+        return [data[node_idx] for data in self.data.additional_data]
+
     @property
     def descendants(self) -> torch.Tensor:
         """
@@ -244,7 +276,20 @@ class TensorTree:
 
         return self.__subtree_parents
 
-    @lru_cache(maxsize=1)
+    @property
+    def additional_data(self) -> List[Sequence[LabelType]]:
+        """
+        Returns the relevant subset of additional data for this tree. This will return
+         a slice of the data. Changing this object will change the storage and may
+         invalidate the tree. This is not checked.
+
+        """
+        if self.root_idx == 0:
+            return self.data.additional_data
+        else:
+            return [data[self.root_idx: self.end] for data in self.data.additional_data]
+
+    # @instance_method_lru_cache(maxsize=1)
     def node_incidence_matrix(self) -> torch.BoolTensor:
         """ Returns the node incidence matrix for this tree"""
         return tensortree.node_incidence_matrix(self.descendants)

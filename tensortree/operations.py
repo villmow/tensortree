@@ -1,4 +1,4 @@
-from typing import Union, Any, Optional, Sequence
+from typing import Union, Any, Optional, Sequence, List
 
 import numpy as np
 import torch
@@ -580,6 +580,15 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
         # handle lists
         node_data = [tree.node_data[index.item()] for index in indices_to_keep]
 
+    # sequences in additional data are the same type as in node data
+    if isinstance(tree.node_data, (torch.Tensor, np.ndarray)):
+        additional_data = [data[indices_to_keep] for data in tree.additional_data]
+    else:
+        # handle lists
+        additional_data = [
+            [data[index.item()] for index in indices_to_keep] for data in tree.additional_data
+        ]
+
     # and from parent and descendant tensors
     parents = tree.parents[indices_to_keep]
     descendants = tree.descendants[indices_to_keep]
@@ -596,7 +605,7 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants)
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
 
 
 def delete_children(
@@ -677,6 +686,15 @@ def delete_children(
         # handle other sequence types, such as list of strings
         node_data = [tree.node_data[index.item()] for index in indices_to_keep]
 
+    # sequences in additional data are the same type as in node data
+    if isinstance(tree.node_data, (torch.Tensor, np.ndarray)):
+        additional_data = [data[indices_to_keep] for data in tree.additional_data]
+    else:
+        # handle lists
+        additional_data = [
+            [data[index.item()] for index in indices_to_keep] for data in tree.additional_data
+        ]
+
     node_data[pos_mask] = replacement_token
     descendants[node_idx] = 1
     descendants[pos_mask] = 0
@@ -688,7 +706,7 @@ def delete_children(
     for ancestor in tree.iter_ancestors(node_idx):
         descendants[ancestor] -= num_removed_nodes
 
-    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants)
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
 
 
 def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, torch.Tensor]):
@@ -801,6 +819,20 @@ def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, 
         swapped_node_data[node_1:node_2_swp_end] = original_node_data[node_2:node_2_end]  # copy subtree 2
         return swapped_node_data
 
+    def swap_additional_data() -> List[torch.Tensor]:
+        swapped_additional_data = []
+
+        for data in tree.additional_data:
+            swapped_data = data.clone()  # create a copy
+
+            swapped_data[node_1_swp_start:node_2_end] = data[node_1:node_1_end]  # copy subtree 1
+            swapped_data[node_2_swp_end:node_1_swp_start] = data[node_1_end:node_2]  # move nodes between trees
+            swapped_data[node_1:node_2_swp_end] = data[node_2:node_2_end]  # copy subtree 2
+
+            swapped_additional_data.append(swapped_data)
+
+        return swapped_additional_data
+
     def swap_parents() -> torch.Tensor:
         original_parents = tree.parents
         swapped_parents = original_parents.clone()
@@ -857,22 +889,27 @@ def swap(tree: TensorTree, node_1: Union[int, torch.Tensor], node_2: Union[int, 
     node_data = swap_node_data()
     parents = swap_parents()
     descendants = swap_descendants(parents)
+    additional_data = swap_additional_data()
 
     return tensortree.tree(
         parents=parents,
         descendants=descendants,
-        node_data=node_data
+        node_data=node_data,
+        additional_data=additional_data
     )
 
 
 def insert_child(
         tree: TensorTree, parent_idx: int, child_node_data: Union[Any, TensorTree],
-        right_sibling_idx: Optional[int] = None
+        right_sibling_idx: Optional[int] = None, child_additional_data: Optional[List[Union[List, torch.Tensor]]] = None,
 ) -> TensorTree:
     assert isinstance(
         child_node_data,
         (torch.Tensor, int, type(tree.node_data[parent_idx]), TensorTree)
     ), f"Replacement token needs to be tensor type"
+
+    if child_additional_data is None:
+        child_additional_data = []
 
     if right_sibling_idx is None:
         # get node after this branch
@@ -891,16 +928,23 @@ def insert_child(
 
         descendants_to_insert = child_node_data.descendants
         node_data_to_insert = child_node_data.node_data
-
+        additional_data_to_insert = child_node_data.additional_data
     else:
         parents_to_insert = tree.parents.new_tensor([parent_idx])
         descendants_to_insert = tree.descendants.new_tensor([0])
 
         if isinstance(tree.node_data, torch.Tensor):
             node_data_to_insert = tree.node_data.new_tensor([child_node_data])
+            print("child_additional_data", child_additional_data)
+            print("tree.additional_data", tree.additional_data)
+            additional_data_to_insert = [orig_data.new_tensor([new_data]) for new_data, orig_data in zip(child_additional_data, tree.additional_data)]
         else:
             # handle lists
             node_data_to_insert = [child_node_data]
+            additional_data_to_insert = [new_data for new_data in child_additional_data]
+
+    if len(additional_data_to_insert) != len(tree.additional_data):
+        raise ValueError(f"Need same amount of additional data. Tree: {len(tree)}, New node: {len(child_additional_data)}")
 
     # node data
     if isinstance(tree.node_data, torch.Tensor):
@@ -909,8 +953,17 @@ def insert_child(
             node_data_to_insert,
             tree.node_data[idx_to_insert:],
         ])
+        additional_data = [
+            torch.cat([orig_data[:idx_to_insert], new_data, orig_data[idx_to_insert:],])
+            for orig_data, new_data in zip(tree.additional_data, additional_data_to_insert)
+        ]
+
     elif isinstance(tree.node_data, list):
         node_data = tree.node_data[:idx_to_insert] + node_data_to_insert + tree.node_data[idx_to_insert:]
+        additional_data = [
+            orig_data[:idx_to_insert] + new_data + orig_data[idx_to_insert:]
+            for orig_data, new_data in zip(tree.additional_data, additional_data_to_insert)
+        ]
     else:
         raise ValueError("Unknown type of node_data.")
 

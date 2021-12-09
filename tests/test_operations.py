@@ -415,8 +415,8 @@ def test_tensortree_children():
     assert tree.children(node_idx=10).tolist() == []
     assert tree.children(node_idx=11).tolist() == []
 
-    # with pytest.raises(IndexError):
-    tree.children(node_idx=12).tolist()
+    with pytest.raises(IndexError):
+        tree.children(node_idx=12).tolist()
 
     with pytest.raises(IndexError):
         tree.children(node_idx=-12).tolist()
@@ -541,6 +541,91 @@ def test_tensortree_replace_branch_string():
     assert len(other_tree) == 7
 
 
+def test_tensortree_delete_node_with_additional_data():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+    tokens = [t for t in "ABCDEFGHIJKL"]
+    additional_data = [[t for t in "ABCDEFGHIJKL"], list(range(len(tokens)))]
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    tree = tensortree.tree(node_data=tokens, parents=parents, additional_data=additional_data)
+    tree.pprint()
+    assert len(tree) == 12
+    print(tree.additional_data)
+    other_tree = tree.delete_node(1, replacement_token="Qwertz")
+    other_tree.pprint()
+
+    assert other_tree.additional_data == [['A', 'B', 'H', 'I', 'J', 'K', 'L'], [0, 1, 7, 8, 9, 10, 11]]
+    assert len(other_tree) == 7
+
+
+def test_tensortree_additional_data():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+    tokens = [t for t in "ABCDEFGHIJKL"]
+    additional_data = [[t for t in "ABCDEFGHIJKL"], list(range(len(tokens)))]
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    tree = tensortree.tree(node_data=tokens, parents=parents, additional_data=additional_data)
+    tree.pprint()
+    print(tree.additional_data)
+    other_tree = tree[1]
+    other_tree.pprint()
+    print(other_tree.additional_data)
+
+    assert other_tree.additional_data == [['B', 'C', 'D', 'E', 'F', 'G'], [1, 2, 3, 4, 5, 6]]
+
+
+def test_tensortree_delete_node_with_additional_data_tensor():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+    tokens = [t for t in "ABCDEFGHIJKL"]
+    additional_data = [[t for t in "ABCDEFGHIJKL"], list(range(len(tokens)))]
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    tree = tensortree.tree(node_data=tokens, parents=parents, additional_data=additional_data)
+    tree.pprint()
+    assert len(tree) == 12
+    print(tree.additional_data)
+    other_tree = tree.delete_node(1, replacement_token="Qwertz")
+    other_tree.pprint()
+    print(other_tree.additional_data)
+    assert len(other_tree) == 7
+
+
 def test_tensortree_getitem():
     """
     0. A
@@ -564,8 +649,11 @@ def test_tensortree_getitem():
         print("-"*20)
         subtree.pprint()
         print(subtree.root_idx, len(subtree))
-        for r in range(len(parents)):
-            if r < subtree.root_idx or r > (subtree.root_idx + len(subtree)):
+        for r in range(-len(parents), len(parents)):  #some range
+            if 0 <= r < len(subtree):
+                another_view = subtree[r]
+                another_view.pprint()
+            else:
                 with pytest.raises(IndexError):
                     print("retrieving index", r, "from subtree")
                     another = subtree[r]
