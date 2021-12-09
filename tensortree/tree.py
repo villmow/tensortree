@@ -545,7 +545,6 @@ class TensorTree:
         else:
             return [self.get_node_data(i) for i in self.leaf_indices()]
 
-
     # children
     @validate_index
     def iter_children(self, node_idx: Union[int, torch.Tensor]) -> Generator[torch.Tensor, None, None]:
@@ -620,6 +619,10 @@ class TensorTree:
         if next_node is not None:
             if self.get_parent(next_node) == self.get_parent(node_idx):
                 return next_node
+
+    @validate_index
+    def are_siblings(self, node1: Union[int, torch.Tensor], node2: Union[int, torch.Tensor]) -> bool:
+        return self.get_parent(node1) == self.get_parent(node2)
 
     @validate_index
     def siblings_mask(self, node_idx: Union[int, torch.Tensor], include_left_siblings: bool = True, include_right_siblings: bool = True) -> torch.BoolTensor:
