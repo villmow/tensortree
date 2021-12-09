@@ -990,6 +990,6 @@ def insert_child(
     for ancestor in tree.iter_ancestors(parent_idx):
         descendants[ancestor] += num_nodes_added
 
-    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants)
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
 
 
