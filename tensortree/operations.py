@@ -608,6 +608,77 @@ def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replace
     return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
 
 
+def delete_siblings(tree: TensorTree, node_indices: Union[int, torch.Tensor], replacement: Optional[Any] = None) -> TensorTree:
+    """
+    Returns a new tree with branches at node_indices deleted or replaced with a single node without children.
+    The node indices must be direct siblings!
+
+    """
+
+    if replacement is not None:
+        assert isinstance(replacement, (torch.Tensor, int, type(tree.node_data[node_idx]))), "Replacement token needs to be tensor type"
+
+
+    if not isinstance(node_indices, torch.Tensor):
+        node_indices = torch.tensor(node_indices, dtype=torch.long)
+
+    # maybe check if node_indices are really siblings, otherwise it will produce garbarge
+
+    # which nodes to keep
+    insert_replacement = replacement is not None
+    num_removed_nodes = (tree.descendants[node_indices] + 1).sum()
+
+    if insert_replacement:
+        num_removed_nodes -= 1  # one remains
+
+    start = node_indices[0]
+    end = tree.next_node_not_in_branch(node_indices[-1])
+
+    if insert_replacement:
+        start += 1
+
+    indices_to_keep = torch.cat(
+        (
+            torch.arange(start),  # keep node_idx
+            torch.arange(end, len(tree))
+        )
+    )
+
+    # select indices to keep from tokens
+    if isinstance(tree.node_data, (torch.Tensor, np.ndarray)):
+        node_data = tree.node_data[indices_to_keep]
+    else:
+        # handle lists
+        node_data = [tree.node_data[index.item()] for index in indices_to_keep]
+
+    # sequences in additional data are the same type as in node data
+    if isinstance(tree.node_data, (torch.Tensor, np.ndarray)):
+        additional_data = [data[indices_to_keep] for data in tree.additional_data]
+    else:
+        # handle lists
+        additional_data = [
+            [data[index.item()] for index in indices_to_keep] for data in tree.additional_data
+        ]
+
+    # and from parent and descendant tensors
+    parents = tree.parents[indices_to_keep]
+    descendants = tree.descendants[indices_to_keep]
+
+    # explicitly set masked token
+    if insert_replacement:
+        descendants[start] = 0
+        node_data[start] = replacement
+
+    # Adjust parents after new mask_pos
+    parents[start:][parents[start:] > start] -= num_removed_nodes
+
+    # go through each parent of node at mask_pos and adjust descendants
+    for ancestor in tree.iter_ancestors(start):
+        descendants[ancestor] -= num_removed_nodes
+
+    return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
+
+
 def delete_children(
         tree: TensorTree, node_idx: int, replacement_token: Any = 999,
 ) -> TensorTree:

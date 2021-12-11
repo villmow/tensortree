@@ -597,6 +597,42 @@ def test_tensortree_additional_data():
 
     assert other_tree.additional_data == [['B', 'C', 'D', 'E', 'F', 'G'], [1, 2, 3, 4, 5, 6]]
 
+def test_tensortree_delete_siblings_additional_data():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    tokens = [t for t in "ABCDEFGHIJKL"]
+    additional_data = [[t for t in "ABCDEFGHIJKL"], list(range(len(tokens)))]
+    tree = tensortree.tree(node_data=tokens, parents=parents, additional_data=additional_data)
+    tree = tree.insert_child(6, tree[8])
+    tree.pprint()
+
+    print(tree.node_data)
+    print(tree.descendants)
+    print(tree.parents)
+    tree.pprint()
+
+    with pytest.raises(ValueError):
+        new_tree = tree.delete_siblings([2,3,4,7], None)
+
+    new_tree = tree.delete_siblings([2,3,4], None)
+    print(new_tree.node_data)
+    print(new_tree.descendants)
+    print(new_tree.parents)
+    new_tree.pprint()
+
 
 def test_tensortree_delete_node_with_additional_data_tensor():
     """

@@ -66,9 +66,14 @@ class TreeStorage:
         if self.additional_data is None:
             object.__setattr__(self, 'additional_data', [])
 
+        additional_data = []
         for element in self.additional_data:
-            if type(element) is not type(node_data) and len(node_data) != len(element):
+            if type(element) is not type(node_data):
+                element = to_torch(element)
+            if len(node_data) != len(element):
                 raise ValueError("additional data must have same shape and type as node data")
+            additional_data.append(element)
+        object.__setattr__(self, 'additional_data', additional_data)
 
         object.__setattr__(self, 'parents', parents)
         object.__setattr__(self, 'descendants', descendants)
@@ -785,6 +790,25 @@ class TensorTree:
             #children:    [  2,  2,  0,  2,  1,  1,  1,  0,  0,  0]
             """
         return tensortree.delete_subtree(self, node_idx, replacement_token)
+
+    def delete_siblings(self, node_indices: int, replacement_token: Optional[Any] = None, dont_check: bool = False):
+        """
+         Returns a new tree with branches at node_indices deleted or replaced with a single node without children.
+        The node indices must be direct siblings!
+        """
+        if not dont_check:
+            from itertools import zip_longest
+            first_node = node_indices[0]
+            sibs = self.iter_siblings(first_node, include_left_siblings=False)
+
+            for sibling_idx, node_idx in zip_longest(sibs, node_indices[1:], fillvalue=None):
+                if node_idx is None:
+                    break
+
+                if node_idx != sibling_idx:
+                    raise ValueError("Node indices seem to be no direct siblings.")
+
+        return tensortree.delete_siblings(self, node_indices, replacement_token)
 
     @validate_index
     def delete_children(self, node_idx: int, replacement_token: Optional[Any] = None):
