@@ -225,7 +225,12 @@ class TensorTree:
         if node_idx == self.root_idx:
             return
 
-        return self.data.parents[node_idx]
+        # FIXME test this! not sure if correct
+        old_parent = self.data.parents[node_idx]
+        new_parent = old_parent - self.root_idx
+
+        assert new_parent >= -1
+        return new_parent
 
     @validate_index
     def get_additional_node_data(self, node_idx: Union[int, torch.Tensor]) -> List[Any]:

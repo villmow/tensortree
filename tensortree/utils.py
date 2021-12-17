@@ -1,5 +1,6 @@
 from itertools import takewhile, repeat
 import pathlib as pl
+import os
 from typing import Union, List, Optional, Sequence, Any
 
 import numpy as np
@@ -8,11 +9,18 @@ import torch
 import functools
 
 
+DONT_VALIDATE_INDEX = os.getenv("DONT_VALIDATE_INDEX", False)
+DONT_VALIDATE_INDEX = True
+
 def validate_index(_func=None, allow_none: bool = False):
     """ Should be only used inside TensorTree and on functions that receive
     a node_idx as the first argument after self.
     """
+
     def decorator(func):
+        if DONT_VALIDATE_INDEX:
+            return func
+
         @functools.wraps(func)
         def wrapper(self, node_idx, *args, **kwargs):
             if node_idx is None:
@@ -187,3 +195,48 @@ def restore_whitespace(text: str) -> str:
             lambda m: whitespace_restoremap[m.group()],
             text
         )
+
+
+def parents_from_descendants(descendants: Sequence[int]) -> torch.Tensor:
+    """ not very performant, but it works."""
+
+    stack_idx = [0]
+    stack_open_descendants = [descendants[0]]
+
+    parents = [-1]
+
+    for original_idx, num_descendants in enumerate(descendants[1:], start=1):
+        parents.append(stack_idx[-1])
+
+        stack_idx.append(original_idx)
+        stack_open_descendants.append(num_descendants + 1)
+
+        stack_open_descendants = [d - 1 for d in stack_open_descendants if (d - 1) > 0]
+        stack_idx = stack_idx[:len(stack_open_descendants)]
+
+    return descendants.new_tensor(
+        parents
+    ) if isinstance(descendants, torch.Tensor) else torch.tensor(parents, dtype=torch.long)
+
+
+def descendants_from_parents(parents: Sequence[int]) -> torch.Tensor:
+    descendants = parents.new_zeros(
+        parents.size(-1)
+    ) if isinstance(parents, torch.Tensor) else torch.zeros(len(parents), dtype=torch.long)
+
+    active = torch.full_like(descendants, fill_value=False, dtype=torch.bool)  # bool tensor with all false
+
+    for node_idx, parent_idx in enumerate(parents):
+        active[(parent_idx + 1):] = False  # deactivate closed branch
+        descendants[active] += 1  # increment descendants on all active nodes
+        active[node_idx] = True  # set current node as active
+
+    return descendants
+
+
+def descendants_from_node_incidences(node_incidences: torch.Tensor):
+    """ Computes the descendants array from a (batched) node incidence matrix.
+
+    If the matrix is batched, the returned descendants array will have -1 on padded indices.
+    """
+    return node_incidences.sum(-2) - 1

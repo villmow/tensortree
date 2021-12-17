@@ -627,7 +627,9 @@ def test_tensortree_delete_siblings_additional_data():
     with pytest.raises(ValueError):
         new_tree = tree.delete_siblings([2,3,4,7], None)
 
-    new_tree = tree.delete_siblings([2,3,4], None)
+    # new_tree = tree.delete_siblings([2,3,4], None)
+    new_tree = tree.delete_siblings([5,6], None)
+
     print(new_tree.node_data)
     print(new_tree.descendants)
     print(new_tree.parents)
@@ -661,6 +663,207 @@ def test_tensortree_delete_node_with_additional_data_tensor():
     print(other_tree.additional_data)
     assert len(other_tree) == 7
 
+
+def test_tensortree_cat_trees():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+
+    tokens = [t for t in "ABCDEFGHIJKL"]
+    additional_data = [[t for t in "ABCDEFGHIJKL"], list(range(len(tokens)))]
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    tree = tensortree.tree(node_data=tokens, parents=parents, additional_data=additional_data)
+    tree.pprint()
+    assert len(tree) == 12
+    other_tree = tensortree.cat([tree[1], tree[7], tree[7]], new_root_node_data="Qwertz", new_root_additional_data=[["ROOT"], [999]])
+    other_tree.pprint()
+    other_tree = tensortree.cat([tree[1], tree[7], tree[11]], new_root_node_data="Qwertz", new_root_additional_data=[["ROOT"], [999]])
+    other_tree.pprint()
+
+def test_tensortree_cat_trees_tensortype():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    additional_data = [list(range(len(parents)))]
+    tree = tensortree.tree(parents=parents, additional_data=additional_data)
+    tree.pprint()
+    assert len(tree) == 12
+    other_tree = tensortree.cat([tree[1], tree[7], tree[7]], new_root_node_data=9999, new_root_additional_data=[[999]])
+    other_tree.pprint()
+    other_tree = tensortree.cat([tree[1], tree[7], tree[11]], new_root_node_data=9999, new_root_additional_data=[[6666]])
+    other_tree.pprint()
+
+
+def test_tensortree_replace_children_of_nodes_tensortype():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+    from tensortree import replace_children_of_nodes
+
+    # """
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    tree = tensortree.tree(parents=parents)
+    other_tree = replace_children_of_nodes(tree, [1,8], [torch.tensor([9,9,9]), torch.tensor([1,1,1,1,1,1,1])])
+    assert other_tree.node_data.tolist()   == ([0, 1, 9, 9, 9, 7, 8, 1, 1, 1, 1, 1, 1, 1])
+    assert other_tree.parents.tolist()     == ([-1, 0, 1, 1, 1, 0, 5, 6, 6, 6, 6, 6, 6, 6])
+    assert other_tree.descendants.tolist() == ([13, 3, 0, 0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0])
+    # tree.pprint()
+    # other_tree.pprint()
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 0]
+    tree = tensortree.tree(parents=parents)
+    other_tree = replace_children_of_nodes(tree, [1,8], [torch.tensor([9,9,9]), torch.tensor([1,1,1,1,1,1,1])])
+    assert other_tree.node_data.tolist()   == ([0, 1, 9, 9, 9, 7, 8, 1, 1, 1, 1, 1, 1, 1, 12])
+    assert other_tree.parents.tolist()     == ([-1, 0, 1, 1, 1, 0, 5, 6, 6, 6, 6, 6, 6, 6, 0])
+    assert other_tree.descendants.tolist() == ([14, 3, 0, 0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0])
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 0]
+    tree = tensortree.tree(parents=parents)
+    other_tree = replace_children_of_nodes(tree, [1,8], [torch.tensor([9,9,9]), torch.tensor([1])])
+    assert other_tree.node_data.tolist()   == ([0, 1, 9, 9, 9, 7, 8, 1, 12])
+    assert other_tree.parents.tolist()     == ([-1, 0, 1, 1, 1, 0, 5, 6, 0])
+    assert other_tree.descendants.tolist() == ([8, 3, 0, 0, 0, 2, 1, 0, 0])
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 0]
+    tree = tensortree.tree(parents=parents)
+    other_tree = replace_children_of_nodes(tree, [1,12], [torch.tensor([9,9,9]), torch.tensor([1])])
+
+    assert other_tree.node_data.tolist()   == ([0, 1, 9, 9, 9, 7, 8, 9, 10, 11, 12, 1])
+    assert other_tree.parents.tolist()     == [-1, 0, 1, 1, 1, 0, 5, 6, 6, 6, 0, 10]
+    assert other_tree.descendants.tolist() == [11, 3, 0, 0, 0, 4, 3, 0, 0, 0, 1, 0]
+    # """
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8, 0]
+    tree = tensortree.tree(parents=parents)
+    tree.pprint()
+
+    other_tree = replace_children_of_nodes(tree, [3,4,5,12], [
+        torch.tensor([9,9,9]),
+        torch.tensor([9,9,9]),
+        torch.tensor([9,9,9]),
+        torch.tensor([1,2,3,4,5])
+    ])
+    other_tree.pprint()
+
+
+
+def test_tensortree_delete_multiple_tensortype():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    additional_data = [list(range(len(parents)))]
+    tree = tensortree.tree(parents=parents, additional_data=additional_data)
+    tree.pprint()
+    assert len(tree) == 12
+    # node_indices = [2,4,5, 8]
+    node_indices = [6,7]
+    other_tree = tensortree.delete_nodes(tree, node_indices)
+    other_tree.pprint()
+    other_tree = tensortree.delete_nodes(
+        tree, node_indices, replacements=list(range(len(node_indices)))
+    )
+    other_tree.pprint()
+    print(other_tree.descendants)
+
+def test_tensortree_delete_multiple_tensortype_mask():
+    """
+    0
+    ├── 1
+    │   ├── 2
+    │   ├── 3
+    │   ├── 4
+    │   ├── 5
+    │   ╰── 6
+    ╰── 7
+        ╰── 8
+            ├── 9
+            ├── 10
+            ╰── 11
+    """
+
+    parents = [-1, 0, 1, 1, 1, 1, 1, 0, 7, 8, 8, 8]
+    additional_data = [list(range(len(parents)))]
+    tree = tensortree.tree(parents=parents, additional_data=additional_data)
+    tree.pprint()
+    assert len(tree) == 12
+    node_indices = [5,6, 9, 10, 11]
+    # node_indices = [6,7]
+
+    # no replacement
+    other_tree = tensortree.delete_nodes(tree, node_indices)
+    other_tree.pprint()
+
+    # all tokens replaced
+    other_tree = tensortree.delete_nodes(
+        tree, node_indices, replacements=list(range(len(node_indices)))
+    )
+    other_tree.pprint()
+
+    # only masked tokens replaced
+    mask = [True, False, True, False, False]
+    replacements = list(range(sum(mask)))
+    other_tree = tensortree.delete_nodes(
+        tree, node_indices, replacements=replacements, replacement_mask=mask
+    )
+    other_tree.pprint()
+    print(other_tree.descendants)
+
+    # only masked tokens replaced
+    mask = [True, False, True, False, True]
+    replacements = list(range(sum(mask)))
+    other_tree = tensortree.delete_nodes(
+        tree, node_indices, replacements=replacements, replacement_mask=mask
+    )
+    other_tree.pprint()
+    print(other_tree.descendants)
 
 def test_tensortree_getitem():
     """
