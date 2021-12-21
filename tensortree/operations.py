@@ -1,4 +1,5 @@
-from typing import Union, Any, Optional, Sequence, List
+from itertools import zip_longest
+from typing import Union, Any, Optional, Sequence, List, Tuple
 
 import numpy as np
 import torch
@@ -461,7 +462,6 @@ def least_common_ancestors(node_incidences: torch.Tensor) -> torch.LongTensor:
     return ancestors
 
 
-
 def delete_subtree(tree: TensorTree, node_idx: Union[int, torch.Tensor], replacement: Optional[Any] = None) -> TensorTree:
     """
     Returns a new tree with branch at node_idx deleted or replaced with a single node without children.
@@ -626,11 +626,6 @@ def delete_siblings(tree: TensorTree, node_indices: Union[int, torch.Tensor], re
     if insert_replacement:
         descendants[start] = 0
         node_data[start] = replacement
-
-    # fixme remove!
-    # assert torch.all(
-    #     descendants == tensortree.descendants_from_parents(parents)), "descendants should be equal to decoded descendants"
-    # assert torch.all(parents == tensortree.parents_from_descendants(descendants)), "parents should be equal to decoded parents"
 
     return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
 
@@ -962,8 +957,6 @@ def insert_child(
 
         if isinstance(tree.node_data, torch.Tensor):
             node_data_to_insert = tree.node_data.new_tensor([child_node_data])
-            print("child_additional_data", child_additional_data)
-            print("tree.additional_data", tree.additional_data)
             additional_data_to_insert = [orig_data.new_tensor([new_data]) for new_data, orig_data in zip(child_additional_data, tree.additional_data)]
         else:
             # handle lists
@@ -1149,12 +1142,6 @@ def delete_nodes(tree: TensorTree, node_indices: Union[int, torch.Tensor], repla
                 ancestor = to_new_idx(ancestor)
                 descendants[ancestor] -= deleted_nodes
 
-
-    # # fixme remove!
-    # assert torch.all(
-    #     descendants == tensortree.descendants_from_parents(parents)), "descendants should be equal to converted descendants"
-    # assert torch.all(parents == tensortree.parents_from_descendants(descendants)), "parents should be equal to converted parents"
-
     tree = tensortree.tree(node_data=node_data, descendants=descendants, parents=parents, additional_data=additional_data)
     return tree
 
@@ -1201,6 +1188,7 @@ def replace_children_of_nodes(tree: TensorTree, node_indices: Union[int, torch.T
 
     sum_of_nodes = new_node_data[0].size(0)
     new_node_indices = []
+
     for i in range(len(node_indices)):
         last = i
         last_idx = node_indices[last]
@@ -1221,7 +1209,8 @@ def replace_children_of_nodes(tree: TensorTree, node_indices: Union[int, torch.T
         parents_replacement += last_idx
         new_parents.append(parents_replacement)
 
-        num_removed_for_node = tree.get_number_of_descendants(last_idx) - len(node_data_replacement)
+        num_descendants_of_last = tree.get_number_of_descendants(last_idx)
+        num_removed_for_node = num_descendants_of_last - len(node_data_replacement)
         num_nodes_removed.append(num_removed_for_node)
 
         if replacement_additional_data is not None:
@@ -1233,8 +1222,8 @@ def replace_children_of_nodes(tree: TensorTree, node_indices: Union[int, torch.T
         # then node
         ###############
         current = i+1
-
         start = tree.next_node_not_in_branch(last_idx)
+
         if start is not None:
             end = node_indices[current] + 1 if current < len(node_indices) else None
 
@@ -1245,8 +1234,11 @@ def replace_children_of_nodes(tree: TensorTree, node_indices: Union[int, torch.T
 
             sum_of_nodes += len(node_data_added)
 
-            to_new_idx[last_idx + 1:start] = 999999 # something invalid
-            to_new_idx[start:] -= num_removed_for_node
+            if num_removed_for_node > 0:
+                to_new_idx[(start - num_removed_for_node):start] = 99999 # something invalid
+                to_new_idx[start:] -= num_removed_for_node
+            else:
+                to_new_idx[start:] -= num_removed_for_node
 
             for i_, add_data in enumerate(a):
                 new_node_additional_data[i_].append(add_data[start:end])
@@ -1269,17 +1261,13 @@ def replace_children_of_nodes(tree: TensorTree, node_indices: Union[int, torch.T
         for ancestor in tree.iter_ancestors(node_idx):
             ancestor_new = to_new_idx[ancestor]
             new_descendants[ancestor_new] -= num_removed_for_node
+
         new_descendants[new_node_idx] = len(replacement)
 
-    # tree = tensortree.tree(node_data=new_node_data, parents=new_parents, additional_data=new_node_additional_data)
-    tree = tensortree.tree(node_data=new_node_data, descendants=new_descendants,  parents=new_parents, additional_data=new_node_additional_data)
+    new_tree = tensortree.tree(node_data=new_node_data, descendants=new_descendants,
+                               parents=new_parents, additional_data=new_node_additional_data)
 
-    # # fixme remove!
-    # assert torch.all(
-    #     new_descendants == tensortree.descendants_from_parents(new_parents)), "descendants should be equal to converted descendants"
-    # assert torch.all(new_parents == tensortree.parents_from_descendants(new_descendants)), "parents should be equal to converted parents"
-
-    return tree
+    return new_tree
 
 
 def cat(trees: List[tensortree.TensorTree], new_root_node_data: Any, new_root_additional_data: list[Any] = None):
@@ -1348,3 +1336,88 @@ def cat(trees: List[tensortree.TensorTree], new_root_node_data: Any, new_root_ad
     )
 
     return new_tree
+
+
+def delete_nodes_and_return_leaves(
+        tree: tensortree.TensorTree, indices_of_nodes: torch.Tensor, replacement_tokens: torch.Tensor
+) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+    """
+    Replaces node at indices with tokens and returns all leaves of the resulting tree..
+
+    :param tree: A tree.
+    :param indices_of_nodes: 1-d long tensor of node indices to replace (Shape: [S])
+    :param replacement_tokens: 1-d tensor of replacement tokens of same shape as `indices_of_nodes`
+    :return:
+    """
+    assert indices_of_nodes.size(0) == replacement_tokens.size(0), "indices of nodes and replacement_tokens should have same shape"
+    assert (1 == indices_of_nodes.dim() == replacement_tokens.dim()), "indices of nodes and replacement_tokens should have same shape"
+
+    leaf_mask = tree.leaves_mask()
+    number_of_nonterminals_before = (~leaf_mask).cumsum(0) - 1
+
+    # calc the postition of the indices in masked token array
+    adj_indices_of_nodes = indices_of_nodes - number_of_nonterminals_before[indices_of_nodes]
+
+    # end position in original node_data array (with nonterminals)
+    indices_of_nodes_end = indices_of_nodes + tree.descendants[indices_of_nodes]
+
+    # end position in masked token array
+    adj_indices_of_nodes_end = indices_of_nodes_end - number_of_nonterminals_before[indices_of_nodes_end]
+
+    indices_of_nodes = adj_indices_of_nodes
+    indices_of_nodes_end = adj_indices_of_nodes_end
+
+    # We then obtain slices for each part before a node to be removed.
+    # relevant_slice, node1_part, relevant_slice, node2_part, ...
+    # 2*S indices_or_sections argument for torch.tensor_split. E.g. indices_or_sections=[2, 3]
+    # and dim=0 would result in the tensors input[:2], input[2:3], and input[3:].
+    split_positions = torch.hstack((indices_of_nodes[:, None], indices_of_nodes_end[:, None]),).view(-1)
+    relevant_slices = torch.tensor_split(tree.node_data[leaf_mask], split_positions)
+
+    replaced_parts = relevant_slices[1::2]
+    relevant_slices = relevant_slices[::2]
+
+    assert len(replaced_parts) == replacement_tokens.size(0)
+    # and concatenate the separate pieces
+    res = torch.cat([x for pair in zip_longest(relevant_slices, replacement_tokens[:, None]) for x in pair if x is not None])
+    return res, replaced_parts
+
+
+# def _replace_nodes_and_return_leaves_list_comp(tree: tensortree.TensorTree, indices_of_nodes: torch.Tensor, replacement_tokens: torch.Tensor):
+#     """
+#     Replaces list of nodes with a new leaf token and returns all leaves of the resulting tree..
+#
+#     :param tree: A tree
+#     :param indices_of_nodes: 1-d long tensor of node indices to replace (Shape: [S])
+#     :param replacement_tokens: 1-d tensor of replacement tokens of same shape as `indices_of_nodes`
+#     :return:
+#     """
+#     assert indices_of_nodes.size(0) == replacement_tokens.size(0), "indices of nodes and replacement_tokens should have same shape"
+#     assert (1 == indices_of_nodes.dim() == replacement_tokens.dim()), "indices of nodes and replacement_tokens should have same shape"
+#     # tree.pprint()
+#     # last token of the node's subtrees
+#     indices_of_nodes_end = indices_of_nodes + tree.descendants[indices_of_nodes]  # I
+#
+#     # We then obtain slices for each part before a node to be removed.
+#     # relevant_slice, node1_part, relevant_slice, node2_part, ...
+#     split_positions = torch.hstack(
+#         (
+#             indices_of_nodes[:, None],
+#             (indices_of_nodes_end + 1)[:, None]
+#         ),
+#     ).view(-1)  # 2*S indices_or_sections argument for torch.tensor_split. E.g. indices_or_sections=[2, 3]
+#     # and dim=0 would result in the tensors input[:2], input[2:3], and input[3:].
+#     print(split_positions)
+#     print(tree.leaves_mask().byte())
+#     print(tree.leaves_mask().byte())
+#     print(tree.node_data)
+#     relevant_slices = torch.tensor_split(tree.node_data, split_positions)
+#     relevant_slices_leaf_masks = torch.tensor_split(tree.leaves_mask(), split_positions)
+#     # Then mask each slice
+#     mask_leaves_before = (
+#         t[mask] for t, mask in islice(zip(relevant_slices, relevant_slices_leaf_masks), None, None, 2)
+#     )
+#
+#     # and concatenate the separate pieces
+#     res = torch.cat([x for pair in zip_longest(mask_leaves_before, replacement_tokens[:, None]) for x in pair if x is not None])
+#     return res

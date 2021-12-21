@@ -6,8 +6,7 @@ import torch
 
 import tensortree
 from tensortree.render import Style, ContRoundStyle, format_tree
-from tensortree.utils import to_torch, validate_index, replace_whitespace
-
+from tensortree.utils import to_torch, validate_index, replace_whitespace, validate_arrays, DEBUG
 
 # Define a type alias for the content of the node sequence
 LabelType = Any
@@ -73,11 +72,14 @@ class TreeStorage:
             if len(node_data) != len(element):
                 raise ValueError("additional data must have same shape and type as node data")
             additional_data.append(element)
-        object.__setattr__(self, 'additional_data', additional_data)
 
+        object.__setattr__(self, 'additional_data', additional_data)
         object.__setattr__(self, 'parents', parents)
         object.__setattr__(self, 'descendants', descendants)
         object.__setattr__(self, 'node_data', node_data)
+
+        # pretty expensive
+        if DEBUG: validate_arrays(parents, descendants)
 
 
 def tree(

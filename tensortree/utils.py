@@ -7,10 +7,12 @@ import numpy as np
 import torch
 
 import functools
+import tensortree
 
 
 DONT_VALIDATE_INDEX = os.getenv("DONT_VALIDATE_INDEX", False)
-DONT_VALIDATE_INDEX = True
+DEBUG = False
+
 
 def validate_index(_func=None, allow_none: bool = False):
     """ Should be only used inside TensorTree and on functions that receive
@@ -40,6 +42,17 @@ def validate_index(_func=None, allow_none: bool = False):
         return decorator  # 2
     else:
         return decorator(_func)
+
+
+def validate_arrays(parents, descendants):
+    assert torch.all(
+        descendants == tensortree.descendants_from_parents(
+            parents)), "descendants should be equal to decoded descendants"
+    assert torch.all(
+        parents == tensortree.parents_from_descendants(
+            descendants)), "parents should be equal to decoded parents"
+    assert (descendants < 0).sum() == 0, "no descendant should be below 0"
+
 
 
 def linecount(filename: Union[pl.Path, str]) -> int:
@@ -191,7 +204,7 @@ def replace_whitespace(text: Union[str, List[str]]):
 
 
 def restore_whitespace(text: str) -> str:
-    return  RE_RESTORE_WHITESPACE.sub(
+    return RE_RESTORE_WHITESPACE.sub(
             lambda m: whitespace_restoremap[m.group()],
             text
         )
