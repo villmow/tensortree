@@ -708,7 +708,7 @@ class TensorTree:
 
     # pretty printing
     def pformat(
-            self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = str,
+            self, max_nodes: Optional[int] = None, node_renderer: Callable[[Any], str] = replace_whitespace,
             style: Union[Style] = ContRoundStyle,
     ) -> str:
         """

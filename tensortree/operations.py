@@ -1013,7 +1013,8 @@ def insert_child(
     return tensortree.tree(node_data=node_data, parents=parents, descendants=descendants, additional_data=additional_data)
 
 
-def delete_nodes(tree: TensorTree, node_indices: Union[int, torch.Tensor], replacements: Optional[Any] = None, replacement_mask: torch.BoolTensor = None) -> TensorTree:
+def delete_nodes(tree: TensorTree, node_indices: Union[int, torch.Tensor], replacements: Optional[Any] = None,
+                 replacement_mask: torch.BoolTensor = None, return_node_indices: bool = False) -> TensorTree:
     """
     Returns a new tree with branches at node_indices deleted or replaced with a single node without children.
     The node indices must be in distinct branches!
@@ -1143,6 +1144,10 @@ def delete_nodes(tree: TensorTree, node_indices: Union[int, torch.Tensor], repla
                 descendants[ancestor] -= deleted_nodes
 
     tree = tensortree.tree(node_data=node_data, descendants=descendants, parents=parents, additional_data=additional_data)
+
+    if return_node_indices:
+        return tree, (new_node_indices[replacement_mask] - 1)  # fixme refactor this method!
+
     return tree
 
 
@@ -1282,6 +1287,8 @@ def cat(trees: List[tensortree.TensorTree], new_root_node_data: Any, new_root_ad
     if is_tensor_data:
         if not isinstance(new_root_node_data, torch.Tensor):
             new_root_node_data = torch.tensor([new_root_node_data])
+        elif isinstance(new_root_node_data, torch.Tensor) and new_root_node_data.ndim == 0:
+            new_root_node_data = new_root_node_data[None]
 
         new_root_additional_data = [
             [torch.tensor(ad) if not isinstance(ad, torch.Tensor) else ad] for ad in new_root_additional_data
